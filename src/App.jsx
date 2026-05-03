@@ -1,0 +1,2288 @@
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import {
+  CalendarDays,
+  CheckCircle2,
+  ChevronDown,
+  CircleDashed,
+  ClipboardList,
+  Eye,
+  EyeOff,
+  Loader2,
+  LockKeyhole,
+  LogOut,
+  Moon,
+  Plus,
+  Settings,
+  Sun,
+  Trash2,
+  X,
+} from "lucide-react";
+import {
+  DndContext,
+  DragOverlay,
+  KeyboardSensor,
+  MouseSensor,
+  TouchSensor,
+  closestCenter,
+  pointerWithin,
+  useDraggable,
+  useDroppable,
+  useSensor,
+  useSensors,
+} from "@dnd-kit/core";
+import {
+  SortableContext,
+  arrayMove,
+  horizontalListSortingStrategy,
+  sortableKeyboardCoordinates,
+  useSortable,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+
+const STATUSES = [
+  { id: "todo", label: "TODO", icon: ClipboardList, accent: "emerald" },
+  { id: "in_progress", label: "진행중", icon: CircleDashed, accent: "sky" },
+  { id: "done", label: "완료", icon: CheckCircle2, accent: "amber" },
+  { id: "hidden", label: "숨김", icon: EyeOff, accent: "slate" },
+];
+
+function formatToday(date = new Date()) {
+  const yyyy = date.getFullYear();
+  const mm = String(date.getMonth() + 1).padStart(2, "0");
+  const dd = String(date.getDate()).padStart(2, "0");
+  const day = ["일", "월", "화", "수", "목", "금", "토"][date.getDay()];
+  return `${yyyy}.${mm}.${dd}(${day})`;
+}
+
+const STATUS_BY_ID = STATUSES.reduce((acc, status) => {
+  acc[status.id] = status;
+  return acc;
+}, {});
+
+function parseGroupedText(value) {
+  const trimmed = String(value || "").trim();
+  const groupOnly = trimmed.match(/^#([^\s#]{1,60})$/);
+  if (groupOnly) {
+    return { groupName: groupOnly[1].trim(), text: "" };
+  }
+  const match = trimmed.match(/^#([^\s#]{1,60})\s+([\s\S]+)$/);
+  if (!match) {
+    return { groupName: "", text: trimmed };
+  }
+  const text = match[2].trim();
+  if (!text) {
+    return { groupName: "", text: trimmed };
+  }
+  return { groupName: match[1].trim(), text };
+}
+
+function formatGroupedText(item) {
+  const groupName = String(item?.groupName || "").trim();
+  return groupName ? `#${groupName} ${item.text}` : item.text;
+}
+
+function getHashtagQuery(value) {
+  const match = String(value || "").match(/^#([^\s#]*)$/);
+  return match ? match[1] : null;
+}
+
+class ApiError extends Error {
+  constructor(message, statusCode) {
+    super(message);
+    this.statusCode = statusCode;
+  }
+}
+
+async function apiRequest(path, options = {}) {
+  const headers = {
+    ...(options.body ? { "content-type": "application/json" } : {}),
+    ...(options.headers || {}),
+  };
+
+  const response = await fetch(path, {
+    credentials: "same-origin",
+    ...options,
+    headers,
+  });
+  const payload = await response.json().catch(() => ({}));
+
+  if (!response.ok) {
+    throw new ApiError(
+      payload.error || "요청을 처리하지 못했습니다.",
+      response.status,
+    );
+  }
+
+  return payload;
+}
+
+function useTheme() {
+  const [theme, setTheme] = useState(() => {
+    const saved = window.localStorage.getItem("theme");
+    if (saved === "light" || saved === "dark") {
+      return saved;
+    }
+    return window.matchMedia("(prefers-color-scheme: dark)").matches
+      ? "dark"
+      : "light";
+  });
+
+  useEffect(() => {
+    document.documentElement.classList.toggle("dark", theme === "dark");
+    window.localStorage.setItem("theme", theme);
+  }, [theme]);
+
+  return [theme, setTheme];
+}
+
+function useShowHidden() {
+  const [showHidden, setShowHidden] = useState(() => {
+    const saved = window.localStorage.getItem("showHidden");
+    return saved === null ? true : saved === "true";
+  });
+
+  useEffect(() => {
+    window.localStorage.setItem("showHidden", String(showHidden));
+  }, [showHidden]);
+
+  return [showHidden, setShowHidden];
+}
+
+async function loadSubscriptions() {
+  const initial = await apiRequest("/api/subscriptions");
+  const serverSubs = Array.isArray(initial.subscriptions) ? initial.subscriptions : [];
+
+  const migratedFlag = "subscriptions_migrated_v1";
+  if (typeof window === "undefined" || window.localStorage.getItem(migratedFlag)) {
+    return serverSubs;
+  }
+
+  if (serverSubs.length > 0) {
+    window.localStorage.setItem(migratedFlag, "true");
+    return serverSubs;
+  }
+
+  let local = [];
+  try {
+    const saved = window.localStorage.getItem("subscriptions");
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      if (Array.isArray(parsed)) local = parsed;
+    }
+  } catch {}
+
+  let migrated = false;
+  for (const sub of local) {
+    if (!sub?.id || !sub?.name || !sub?.expiryDate) continue;
+    try {
+      await apiRequest("/api/subscriptions", {
+        method: "POST",
+        body: JSON.stringify({ id: sub.id, name: sub.name, expiryDate: sub.expiryDate }),
+      });
+      migrated = true;
+    } catch {}
+  }
+
+  window.localStorage.setItem(migratedFlag, "true");
+  if (migrated) {
+    const refreshed = await apiRequest("/api/subscriptions");
+    return Array.isArray(refreshed.subscriptions) ? refreshed.subscriptions : [];
+  }
+
+  return serverSubs;
+}
+
+function dDayLabel(expiryDate) {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const expiry = new Date(expiryDate);
+  expiry.setHours(0, 0, 0, 0);
+  const diff = Math.ceil((expiry - today) / 86400000);
+  return diff === 0 ? "D-day" : diff > 0 ? `D-${diff}` : `D+${Math.abs(diff)}`;
+}
+
+function dDayColor(expiryDate) {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const diff = Math.ceil((new Date(expiryDate) - today) / 86400000);
+  if (diff <= 7) return "text-rose-500 dark:text-rose-400";
+  if (diff <= 30) return "text-amber-500 dark:text-amber-400";
+  return "text-emerald-500 dark:text-emerald-400";
+}
+
+function SubscriptionBar({ subscriptions, onSave, onDelete }) {
+  const [editingId, setEditingId] = useState(null);
+  const [draftName, setDraftName] = useState("");
+  const [draftDate, setDraftDate] = useState("");
+
+  function startEdit(sub) {
+    setEditingId(sub.id);
+    setDraftName(sub.name);
+    setDraftDate(sub.expiryDate);
+  }
+
+  function startNew() {
+    setEditingId("new");
+    setDraftName("");
+    setDraftDate("");
+  }
+
+  function cancel() {
+    setEditingId(null);
+  }
+
+  function save() {
+    if (!draftName.trim() || !draftDate) return;
+    const id = editingId === "new" ? crypto.randomUUID() : editingId;
+    onSave({ id, name: draftName.trim(), expiryDate: draftDate });
+    setEditingId(null);
+  }
+
+  function formatDisplayDate(iso) {
+    const [y, m, d] = iso.split("-");
+    const thisYear = new Date().getFullYear();
+    return Number(y) !== thisYear
+      ? `${String(y).slice(2)}/${Number(m)}/${Number(d)}`
+      : `${Number(m)}/${Number(d)}`;
+  }
+
+  return (
+    <div className="flex w-full flex-wrap items-center justify-start gap-1.5 md:w-auto md:justify-end">
+      {[...subscriptions].sort((a, b) => new Date(a.expiryDate) - new Date(b.expiryDate)).map((sub) =>
+        editingId === sub.id ? (
+          <div key={sub.id} className="flex items-center gap-1 rounded-md border border-slate-300 bg-white px-1.5 py-0.5 dark:border-slate-700 dark:bg-slate-900">
+            <input
+              autoFocus
+              value={draftName}
+              onChange={(e) => setDraftName(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") save(); if (e.key === "Escape") cancel(); }}
+              placeholder="서비스명"
+              className="w-24 bg-transparent text-xs text-slate-700 outline-none placeholder:text-slate-400 dark:text-slate-200"
+            />
+            <input
+              type="date"
+              value={draftDate}
+              onChange={(e) => setDraftDate(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") save(); if (e.key === "Escape") cancel(); }}
+              className="w-28 bg-transparent text-xs text-slate-700 outline-none dark:text-slate-200 dark::[color-scheme:dark]"
+            />
+            <button onClick={save} className="text-emerald-500 hover:text-emerald-700 dark:hover:text-emerald-300" title="저장">✓</button>
+            <button onClick={cancel} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200" title="취소">✗</button>
+          </div>
+        ) : (
+          <div
+            key={sub.id}
+            className="group flex cursor-pointer items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-2.5 py-0.5 text-xs transition hover:border-slate-300 hover:bg-white dark:border-slate-700 dark:bg-slate-800/60 dark:hover:border-slate-600 dark:hover:bg-slate-800"
+            onClick={() => startEdit(sub)}
+            title="클릭하여 수정"
+          >
+            <span className="font-medium text-slate-600 dark:text-slate-300">{sub.name}</span>
+            <span className="text-slate-400 dark:text-slate-500">{formatDisplayDate(sub.expiryDate)}</span>
+            <span className={`font-semibold tabular-nums ${dDayColor(sub.expiryDate)}`}>{dDayLabel(sub.expiryDate)}</span>
+            <button
+              onClick={(e) => { e.stopPropagation(); onDelete(sub.id); }}
+              className="ml-0.5 text-slate-300 opacity-0 transition hover:text-rose-400 group-hover:opacity-100 dark:text-slate-600 dark:hover:text-rose-400"
+              title="삭제"
+            >
+              ✕
+            </button>
+          </div>
+        )
+      )}
+      {editingId === "new" ? (
+        <div className="flex items-center gap-1 rounded-md border border-slate-300 bg-white px-1.5 py-0.5 dark:border-slate-700 dark:bg-slate-900">
+          <input
+            autoFocus
+            value={draftName}
+            onChange={(e) => setDraftName(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter") save(); if (e.key === "Escape") cancel(); }}
+            placeholder="서비스명"
+            className="w-24 bg-transparent text-xs text-slate-700 outline-none placeholder:text-slate-400 dark:text-slate-200"
+          />
+          <input
+            type="date"
+            value={draftDate}
+            onChange={(e) => setDraftDate(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter") save(); if (e.key === "Escape") cancel(); }}
+            className="w-28 bg-transparent text-xs text-slate-700 outline-none dark:text-slate-200 dark::[color-scheme:dark]"
+          />
+          <button onClick={save} className="text-emerald-500 hover:text-emerald-700 dark:hover:text-emerald-300" title="저장">✓</button>
+          <button onClick={cancel} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200" title="취소">✗</button>
+        </div>
+      ) : (
+        <button
+          onClick={startNew}
+          className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-dashed border-slate-300 text-slate-400 transition hover:border-emerald-400 hover:text-emerald-500 dark:border-slate-600 dark:text-slate-500 dark:hover:border-emerald-500 dark:hover:text-emerald-400"
+          title="구독 추가"
+        >
+          +
+        </button>
+      )}
+    </div>
+  );
+}
+
+function App() {
+  const [theme, setTheme] = useTheme();
+  const [showHidden, setShowHidden] = useShowHidden();
+  const [subscriptions, setSubscriptions] = useState([]);
+  const [authStatus, setAuthStatus] = useState("checking");
+  const [tabs, setTabs] = useState([]);
+  const [items, setItems] = useState([]);
+  const [activeTabId, setActiveTabId] = useState("");
+  const [isReady, setIsReady] = useState(false);
+  const [error, setError] = useState("");
+  const [loginPassword, setLoginPassword] = useState("");
+  const [loginError, setLoginError] = useState("");
+  const [loginLoading, setLoginLoading] = useState(false);
+  const [newTabName, setNewTabName] = useState("");
+  const [showAddTab, setShowAddTab] = useState(false);
+  const [savingTab, setSavingTab] = useState(false);
+  const [newItemText, setNewItemText] = useState("");
+  const [savingItem, setSavingItem] = useState(false);
+  const [activeId, setActiveId] = useState(null);
+  const [tabHintActive, setTabHintActive] = useState(false);
+  const [showCalendar, setShowCalendar] = useState(false);
+  const tabNavRef = useRef(null);
+  const tabHintTimer = useRef(null);
+  const itemTimers = useRef(new Map());
+  const pendingItemUpdates = useRef(new Map());
+
+  const sensors = useSensors(
+    useSensor(MouseSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 6 } }),
+    useSensor(KeyboardSensor),
+  );
+
+  const tabSensors = useSensors(
+    useSensor(MouseSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 6 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
+
+  const displayedStatuses = useMemo(
+    () => STATUSES.filter((status) => showHidden || status.id !== "hidden"),
+    [showHidden],
+  );
+
+  const tabNameById = useMemo(() => {
+    const map = new Map();
+    tabs.forEach((tab) => map.set(tab.id, tab.name));
+    return map;
+  }, [tabs]);
+
+  const tabPositionById = useMemo(() => {
+    const map = new Map();
+    tabs.forEach((tab, index) => map.set(tab.id, tab.position ?? index));
+    return map;
+  }, [tabs]);
+
+  const activeTab = useMemo(
+    () => tabs.find((tab) => tab.id === activeTabId) || null,
+    [tabs, activeTabId],
+  );
+
+  const inProgressItems = useMemo(() => {
+    return items
+      .filter((item) => item.status === "in_progress")
+      .sort((a, b) => {
+        const ta = tabPositionById.get(a.tabId) ?? 0;
+        const tb = tabPositionById.get(b.tabId) ?? 0;
+        if (ta !== tb) return ta - tb;
+        return (a.position ?? 0) - (b.position ?? 0);
+      });
+  }, [items, tabPositionById]);
+
+  const activeItems = useMemo(
+    () => items.filter((item) => item.tabId === activeTabId),
+    [items, activeTabId],
+  );
+
+  const activeGroupNames = useMemo(() => {
+    return Array.from(
+      new Set(
+        activeItems
+          .map((item) => String(item.groupName || "").trim())
+          .filter(Boolean),
+      ),
+    ).sort((a, b) => a.localeCompare(b));
+  }, [activeItems]);
+
+  const itemsByStatus = useMemo(() => {
+    const groups = STATUSES.reduce((acc, status) => {
+      acc[status.id] = [];
+      return acc;
+    }, {});
+    activeItems.forEach((item) => {
+      if (groups[item.status]) {
+        groups[item.status].push(item);
+      }
+    });
+    return groups;
+  }, [activeItems]);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    async function boot() {
+      try {
+        const session = await apiRequest("/api/session");
+        if (!isMounted) return;
+
+        if (!session.authenticated) {
+          setAuthStatus("unauthenticated");
+          return;
+        }
+
+        setAuthStatus("authenticated");
+        setIsReady(false);
+
+        try {
+          const [dashboard, subs] = await Promise.all([
+            apiRequest("/api/dashboard"),
+            loadSubscriptions(),
+          ]);
+          if (isMounted) {
+            applyDashboard(dashboard);
+            setSubscriptions(subs);
+            setError("");
+          }
+        } catch (requestError) {
+          if (isMounted) handleRequestError(requestError);
+        } finally {
+          if (isMounted) setIsReady(true);
+        }
+      } catch (requestError) {
+        if (isMounted) {
+          setAuthStatus("unauthenticated");
+          setLoginError(errorMessage(requestError));
+        }
+      }
+    }
+
+    boot();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (authStatus !== "authenticated") return undefined;
+
+    let isMounted = true;
+
+    async function syncSubscriptions() {
+      try {
+        const subs = await loadSubscriptions();
+        if (isMounted) setSubscriptions(subs);
+      } catch (requestError) {
+        if (isMounted) handleRequestError(requestError);
+      }
+    }
+
+    function handleVisibilityChange() {
+      if (document.visibilityState === "visible") {
+        syncSubscriptions();
+      }
+    }
+
+    window.addEventListener("focus", syncSubscriptions);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    return () => {
+      isMounted = false;
+      window.removeEventListener("focus", syncSubscriptions);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, [authStatus]);
+
+  useEffect(() => {
+    return () => {
+      if (tabHintTimer.current) window.clearTimeout(tabHintTimer.current);
+      itemTimers.current.forEach((timerId) => window.clearTimeout(timerId));
+      itemTimers.current.clear();
+    };
+  }, []);
+
+  function focusTabNavFromInput() {
+    tabNavRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+    setTabHintActive(true);
+    if (tabHintTimer.current) window.clearTimeout(tabHintTimer.current);
+    tabHintTimer.current = window.setTimeout(() => {
+      setTabHintActive(false);
+      tabHintTimer.current = null;
+    }, 1200);
+  }
+
+  function applyDashboard(dashboard) {
+    const nextTabs = Array.isArray(dashboard.tabs) ? dashboard.tabs : [];
+    const nextItems = Array.isArray(dashboard.items) ? dashboard.items : [];
+    setTabs(nextTabs);
+    setItems(nextItems);
+    setActiveTabId((current) => {
+      if (current && nextTabs.some((tab) => tab.id === current)) {
+        return current;
+      }
+      return nextTabs[0]?.id || "";
+    });
+  }
+
+  function errorMessage(requestError) {
+    return requestError instanceof Error
+      ? requestError.message
+      : "요청 처리 중 오류가 발생했습니다.";
+  }
+
+  function handleRequestError(requestError) {
+    if (requestError instanceof ApiError && requestError.statusCode === 401) {
+      setAuthStatus("unauthenticated");
+      setIsReady(false);
+      setLoginError("다시 로그인해주세요.");
+      return;
+    }
+    setError(errorMessage(requestError));
+  }
+
+  async function refreshSubscriptions() {
+    const subs = await loadSubscriptions();
+    setSubscriptions(subs);
+    return subs;
+  }
+
+  function toggleTheme() {
+    setTheme(theme === "dark" ? "light" : "dark");
+  }
+
+  async function handleLogin(event) {
+    event.preventDefault();
+    const password = loginPassword.trim();
+    if (!password) {
+      setLoginError("비밀번호를 입력해주세요.");
+      return;
+    }
+
+    setLoginError("");
+    setLoginLoading(true);
+    setIsReady(false);
+
+    try {
+      await apiRequest("/api/session", {
+        method: "POST",
+        body: JSON.stringify({ password }),
+      });
+      const [dashboard, subs] = await Promise.all([
+        apiRequest("/api/dashboard"),
+        loadSubscriptions(),
+      ]);
+
+      applyDashboard(dashboard);
+      setSubscriptions(subs);
+      setLoginPassword("");
+      setAuthStatus("authenticated");
+      setError("");
+      setIsReady(true);
+    } catch (requestError) {
+      setLoginError(errorMessage(requestError));
+      setIsReady(false);
+    } finally {
+      setLoginLoading(false);
+    }
+  }
+
+  async function handleSaveSub(sub) {
+    try {
+      await apiRequest("/api/subscriptions", {
+        method: "POST",
+        body: JSON.stringify({ id: sub.id, name: sub.name, expiryDate: sub.expiryDate }),
+      });
+      await refreshSubscriptions();
+    } catch (requestError) {
+      handleRequestError(requestError);
+    }
+  }
+
+  async function handleDeleteSub(id) {
+    try {
+      await apiRequest(`/api/subscriptions/${encodeURIComponent(id)}`, {
+        method: "DELETE",
+      });
+      await refreshSubscriptions();
+    } catch (requestError) {
+      handleRequestError(requestError);
+    }
+  }
+
+  async function handleLogout() {
+    try {
+      await apiRequest("/api/logout", { method: "POST" });
+    } finally {
+      setAuthStatus("unauthenticated");
+      setTabs([]);
+      setItems([]);
+      setActiveTabId("");
+      setIsReady(false);
+      setNewItemText("");
+      setNewTabName("");
+      setError("");
+    }
+  }
+
+  async function addTab(event) {
+    event.preventDefault();
+    const name = newTabName.trim();
+    if (!name || savingTab) return;
+
+    setSavingTab(true);
+    setError("");
+    try {
+      const { tab } = await apiRequest("/api/tabs", {
+        method: "POST",
+        body: JSON.stringify({ name }),
+      });
+      setTabs((current) => [...current, tab]);
+      setActiveTabId(tab.id);
+      setNewTabName("");
+      setShowAddTab(false);
+    } catch (requestError) {
+      handleRequestError(requestError);
+    } finally {
+      setSavingTab(false);
+    }
+  }
+
+  async function removeTab(tabId) {
+    const tab = tabs.find((entry) => entry.id === tabId);
+    const itemCount = items.filter((entry) => entry.tabId === tabId).length;
+    const message =
+      itemCount > 0
+        ? `'${tab?.name}' 주제를 삭제하면 항목 ${itemCount}개도 함께 삭제됩니다. 계속할까요?`
+        : `'${tab?.name}' 주제를 삭제할까요?`;
+    if (!window.confirm(message)) return;
+
+    setError("");
+    try {
+      await apiRequest(`/api/tabs/${encodeURIComponent(tabId)}`, {
+        method: "DELETE",
+      });
+      const remaining = tabs.filter((entry) => entry.id !== tabId);
+      setTabs(remaining);
+      setItems((current) => current.filter((entry) => entry.tabId !== tabId));
+      setActiveTabId((current) =>
+        current === tabId ? remaining[0]?.id || "" : current,
+      );
+    } catch (requestError) {
+      handleRequestError(requestError);
+    }
+  }
+
+  async function renameTab(tabId, nextName) {
+    const trimmed = nextName.trim();
+    const target = tabs.find((entry) => entry.id === tabId);
+    if (!target || !trimmed || trimmed === target.name) return;
+
+    const previous = tabs;
+    setTabs((current) =>
+      current.map((entry) =>
+        entry.id === tabId ? { ...entry, name: trimmed } : entry,
+      ),
+    );
+    setError("");
+    try {
+      await apiRequest(`/api/tabs/${encodeURIComponent(tabId)}`, {
+        method: "PATCH",
+        body: JSON.stringify({ name: trimmed }),
+      });
+    } catch (requestError) {
+      setTabs(previous);
+      handleRequestError(requestError);
+    }
+  }
+
+  async function handleTabDragEnd(event) {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    const oldIndex = tabs.findIndex((entry) => entry.id === active.id);
+    const newIndex = tabs.findIndex((entry) => entry.id === over.id);
+    if (oldIndex < 0 || newIndex < 0) return;
+
+    const previous = tabs;
+    const reordered = arrayMove(tabs, oldIndex, newIndex).map((tab, index) => ({
+      ...tab,
+      position: index,
+    }));
+    setTabs(reordered);
+    setError("");
+
+    try {
+      await Promise.all(
+        reordered.map((tab, index) => {
+          const original = previous.find((entry) => entry.id === tab.id);
+          if (original && (original.position ?? -1) === index) return null;
+          return apiRequest(`/api/tabs/${encodeURIComponent(tab.id)}`, {
+            method: "PATCH",
+            body: JSON.stringify({ position: index }),
+          });
+        }),
+      );
+    } catch (requestError) {
+      setTabs(previous);
+      handleRequestError(requestError);
+    }
+  }
+
+  async function addItem(event) {
+    event.preventDefault();
+    const { groupName, text } = parseGroupedText(newItemText);
+    if (!text || !activeTabId || savingItem) return;
+
+    setSavingItem(true);
+    setError("");
+    try {
+      const { item } = await apiRequest("/api/items", {
+        method: "POST",
+        body: JSON.stringify({ tabId: activeTabId, text, groupName }),
+      });
+      setItems((current) => [item, ...current]);
+      setNewItemText("");
+    } catch (requestError) {
+      handleRequestError(requestError);
+    } finally {
+      setSavingItem(false);
+    }
+  }
+
+  function handleDragStart(event) {
+    setActiveId(event.active.id);
+  }
+
+  function handleDragEnd(event) {
+    setActiveId(null);
+    const { active, over } = event;
+    if (!over) return;
+    const nextStatus = String(over.id);
+    if (!STATUS_BY_ID[nextStatus]) return;
+    moveItem(String(active.id), nextStatus);
+  }
+
+  function handleDragCancel() {
+    setActiveId(null);
+  }
+
+  async function moveGroupToHidden(groupName) {
+    const targets = activeItems.filter(
+      (item) => String(item.groupName || "").trim() === groupName && item.status === "done",
+    );
+    await Promise.all(targets.map((item) => moveItem(item.id, "hidden")));
+  }
+
+  async function moveItem(itemId, nextStatus) {
+    const previous = items.find((entry) => entry.id === itemId);
+    if (!previous || previous.status === nextStatus) return;
+
+    setItems((current) =>
+      current.map((entry) =>
+        entry.id === itemId ? { ...entry, status: nextStatus } : entry,
+      ),
+    );
+    try {
+      const { item } = await apiRequest(
+        `/api/items/${encodeURIComponent(itemId)}`,
+        {
+          method: "PATCH",
+          body: JSON.stringify({ status: nextStatus }),
+        },
+      );
+      setItems((current) =>
+        current.map((entry) => (entry.id === itemId ? item : entry)),
+      );
+    } catch (requestError) {
+      setItems((current) =>
+        current.map((entry) => (entry.id === itemId ? previous : entry)),
+      );
+      handleRequestError(requestError);
+    }
+  }
+
+  async function removeItem(itemId) {
+    if (!window.confirm("이 항목을 삭제할까요?")) return;
+    setError("");
+    try {
+      await apiRequest(`/api/items/${encodeURIComponent(itemId)}`, {
+        method: "DELETE",
+      });
+      setItems((current) => current.filter((entry) => entry.id !== itemId));
+    } catch (requestError) {
+      handleRequestError(requestError);
+    }
+  }
+
+  async function updateItemText(itemId, text, groupName) {
+    const trimmed = text.trim();
+    if (!trimmed) return;
+    setItems((current) =>
+      current.map((entry) =>
+        entry.id === itemId
+          ? { ...entry, text: trimmed, groupName: groupName ?? entry.groupName ?? "" }
+          : entry,
+      ),
+    );
+    try {
+      await apiRequest(`/api/items/${encodeURIComponent(itemId)}`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          text: trimmed,
+          ...(groupName !== undefined ? { groupName } : {}),
+        }),
+      });
+    } catch (requestError) {
+      handleRequestError(requestError);
+    }
+  }
+
+  function applyMemos(itemId, memos, { debounce = true } = {}) {
+    setItems((current) =>
+      current.map((entry) =>
+        entry.id === itemId ? { ...entry, memos } : entry,
+      ),
+    );
+    pendingItemUpdates.current.set(itemId, memos);
+
+    const existingTimer = itemTimers.current.get(itemId);
+    if (existingTimer) window.clearTimeout(existingTimer);
+
+    if (!debounce) {
+      itemTimers.current.delete(itemId);
+      pendingItemUpdates.current.delete(itemId);
+      void saveItemMemos(itemId, memos);
+      return;
+    }
+
+    const timerId = window.setTimeout(() => {
+      itemTimers.current.delete(itemId);
+      const next = pendingItemUpdates.current.get(itemId);
+      pendingItemUpdates.current.delete(itemId);
+      if (next !== undefined) void saveItemMemos(itemId, next);
+    }, 500);
+
+    itemTimers.current.set(itemId, timerId);
+  }
+
+  function flushItemMemos(itemId) {
+    const timerId = itemTimers.current.get(itemId);
+    if (!timerId) return;
+    window.clearTimeout(timerId);
+    itemTimers.current.delete(itemId);
+    const next = pendingItemUpdates.current.get(itemId);
+    pendingItemUpdates.current.delete(itemId);
+    if (next !== undefined) void saveItemMemos(itemId, next);
+  }
+
+  function updateMemoText(itemId, memoId, text) {
+    const target = items.find((entry) => entry.id === itemId);
+    if (!target) return;
+    const memos = (target.memos || []).map((memo) =>
+      memo.id === memoId ? { ...memo, text } : memo,
+    );
+    applyMemos(itemId, memos, { debounce: true });
+  }
+
+  function addMemo(itemId) {
+    const target = items.find((entry) => entry.id === itemId);
+    if (!target) return;
+    const newMemo = {
+      id:
+        typeof crypto !== "undefined" && crypto.randomUUID
+          ? crypto.randomUUID()
+          : `m-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      text: "",
+      createdAt: new Date().toISOString(),
+    };
+    const memos = [...(target.memos || []), newMemo];
+    applyMemos(itemId, memos, { debounce: false });
+  }
+
+  function removeMemo(itemId, memoId) {
+    const target = items.find((entry) => entry.id === itemId);
+    if (!target) return;
+    const memos = (target.memos || []).filter((memo) => memo.id !== memoId);
+    applyMemos(itemId, memos, { debounce: false });
+  }
+
+  async function saveItemMemos(itemId, memos) {
+    try {
+      await apiRequest(`/api/items/${encodeURIComponent(itemId)}`, {
+        method: "PATCH",
+        body: JSON.stringify({ memos }),
+      });
+    } catch (requestError) {
+      handleRequestError(requestError);
+    }
+  }
+
+  if (authStatus === "checking") {
+    return (
+      <LoadingShell theme={theme} onToggleTheme={toggleTheme}>
+        접속 상태를 확인하는 중
+      </LoadingShell>
+    );
+  }
+
+  if (authStatus !== "authenticated") {
+    return (
+      <LoginScreen
+        theme={theme}
+        password={loginPassword}
+        error={loginError}
+        isLoading={loginLoading}
+        onToggleTheme={toggleTheme}
+        onPasswordChange={setLoginPassword}
+        onSubmit={handleLogin}
+      />
+    );
+  }
+
+  return (
+    <main className="min-h-screen px-4 py-5 text-slate-950 transition-colors duration-300 dark:text-slate-50 sm:px-6 lg:px-8">
+      <div className="mx-auto flex w-full max-w-[1600px] flex-col gap-5">
+        <header className="flex flex-col gap-4 border-b border-slate-200 pb-5 pt-3 dark:border-slate-800 md:flex-row md:items-end md:justify-between">
+          <div className="pt-5">
+            <p className="text-sm font-medium tracking-normal text-slate-400 dark:text-slate-500">
+              Jerome's Kanban Board
+            </p>
+          </div>
+
+          <div className="flex w-full flex-col gap-1.5 self-end md:w-auto md:items-end md:self-auto">
+            <div className="flex items-center justify-end gap-3">
+              <span className="text-sm font-medium tabular-nums text-slate-500 dark:text-slate-400">
+                {formatToday()}
+              </span>
+              <SettingsMenu
+                theme={theme}
+                onSetTheme={setTheme}
+                showHidden={showHidden}
+                onToggleHidden={() => setShowHidden((value) => !value)}
+                onLogout={handleLogout}
+              />
+            </div>
+            <SubscriptionBar
+              subscriptions={subscriptions}
+              onSave={handleSaveSub}
+              onDelete={handleDeleteSub}
+            />
+          </div>
+        </header>
+
+        {inProgressItems.length > 0 ? (
+          <section
+            aria-label="진행중 항목 요약"
+            className="-mt-1 columns-1 gap-x-8 text-xs leading-5 text-slate-500 dark:text-slate-400 sm:columns-2 lg:columns-3"
+          >
+            {inProgressItems.map((item) => {
+              const tabName = tabNameById.get(item.tabId);
+              return (
+                <div
+                  key={item.id}
+                  className="mb-1 flex break-inside-avoid gap-1.5 break-words"
+                >
+                  <span
+                    aria-hidden="true"
+                    className="select-none text-slate-300 dark:text-slate-600"
+                  >
+                    •
+                  </span>
+                  {tabName ? (
+                    <>
+                      <span className="inline-block w-12 shrink-0 text-center text-slate-400 dark:text-slate-500">
+                        {tabName}
+                      </span>
+                      <span className="text-slate-300 dark:text-slate-600">
+                        ·
+                      </span>
+                    </>
+                  ) : null}
+                  <span className="min-w-0 break-words text-slate-600 dark:text-slate-300">
+                    {item.text}
+                  </span>
+                </div>
+              );
+            })}
+          </section>
+        ) : null}
+
+        <DndContext
+          sensors={tabSensors}
+          collisionDetection={closestCenter}
+          onDragEnd={handleTabDragEnd}
+        >
+          <nav
+            aria-label="주제"
+            ref={tabNavRef}
+            className="flex flex-wrap items-center gap-2 rounded-lg border border-slate-200 bg-white p-2 shadow-sm dark:border-slate-800 dark:bg-slate-950"
+          >
+            <SortableContext
+              items={tabs.map((tab) => tab.id)}
+              strategy={horizontalListSortingStrategy}
+            >
+              {tabs.map((tab) => (
+                <SortableTab
+                  key={tab.id}
+                  tab={tab}
+                  isActive={tab.id === activeTabId}
+                  isHighlighted={tabHintActive && tab.id === activeTabId}
+                  onActivate={(id) => {
+                    setActiveTabId(id);
+                    setError("");
+                  }}
+                  onRemove={removeTab}
+                  onRename={renameTab}
+                />
+              ))}
+            </SortableContext>
+
+            {showAddTab ? (
+            <form onSubmit={addTab} className="ml-auto inline-flex items-center gap-1">
+              <input
+                value={newTabName}
+                onChange={(event) => setNewTabName(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Escape") {
+                    setShowAddTab(false);
+                    setNewTabName("");
+                  }
+                }}
+                autoFocus
+                placeholder="새 주제 이름"
+                spellCheck={false}
+                autoCorrect="off"
+                autoCapitalize="off"
+                className="h-9 min-w-32 rounded-md border border-slate-200 bg-white px-2 text-sm text-slate-950 outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50 dark:focus:border-emerald-400 dark:focus:ring-emerald-500/20"
+              />
+              <button
+                type="submit"
+                disabled={!newTabName.trim() || savingTab}
+                className="inline-flex h-9 items-center gap-1 rounded-md bg-emerald-600 px-2.5 text-sm font-semibold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-emerald-400 dark:text-slate-950 dark:hover:bg-emerald-300"
+              >
+                {savingTab ? (
+                  <Loader2 className="animate-spin" size={14} />
+                ) : (
+                  "추가"
+                )}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowAddTab(false);
+                  setNewTabName("");
+                }}
+                className="inline-flex h-9 w-9 items-center justify-center rounded-md text-slate-500 transition hover:bg-slate-100 hover:text-slate-700 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200"
+                aria-label="취소"
+              >
+                <X size={16} />
+              </button>
+            </form>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setShowAddTab(true)}
+              className="ml-auto inline-flex h-9 items-center gap-1 rounded-md border border-dashed border-slate-300 px-3 text-sm font-medium text-slate-500 transition hover:border-emerald-400 hover:bg-emerald-50 hover:text-emerald-700 dark:border-slate-700 dark:text-slate-400 dark:hover:border-emerald-500 dark:hover:bg-emerald-500/10 dark:hover:text-emerald-200"
+            >
+              <Plus size={14} />새 주제
+            </button>
+          )}
+          </nav>
+        </DndContext>
+
+        {error ? (
+          <p className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-200">
+            {error}
+          </p>
+        ) : null}
+
+        {!isReady ? (
+          <section className="flex min-h-[420px] items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-400">
+            <Loader2 className="mr-2 animate-spin" size={18} />
+            데이터를 불러오는 중
+          </section>
+        ) : tabs.length === 0 ? (
+          <section className="flex min-h-[420px] flex-col items-center justify-center gap-3 rounded-lg border border-dashed border-slate-300 bg-white p-8 text-center text-slate-500 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-400">
+            <Plus size={28} />
+            <p className="text-sm">
+              아직 주제가 없습니다. 위의 <b>새 주제</b> 버튼으로 칸반 보드를 시작해보세요.
+            </p>
+          </section>
+        ) : !activeTabId ? (
+          <section className="flex min-h-[420px] items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-400">
+            주제를 선택해주세요.
+          </section>
+        ) : (
+          <>
+            <form
+              onSubmit={addItem}
+              className="flex gap-2 rounded-lg border border-slate-200 bg-white p-3 shadow-sm dark:border-slate-800 dark:bg-slate-950"
+            >
+              <HashtagInput
+                value={newItemText}
+                onChange={(event) => setNewItemText(event.target.value)}
+                suggestions={activeGroupNames}
+                leadingItems={[
+                  {
+                    key: "tab",
+                    label: activeTab?.name || "",
+                    title: activeTab?.name || "",
+                    ariaLabel: `현재 탭: ${activeTab?.name || ""}`,
+                    onClick: focusTabNavFromInput,
+                    className:
+                      "border-slate-200 bg-slate-50/80 px-2 py-1 text-xs font-bold text-slate-400 transition hover:border-emerald-200 hover:text-emerald-600 md:pointer-events-none md:hover:border-slate-200 md:hover:text-slate-400 dark:border-slate-700 dark:bg-slate-800/60 dark:text-slate-500 dark:hover:border-emerald-500/40 dark:hover:text-emerald-300 dark:md:hover:border-slate-700 dark:md:hover:text-slate-500",
+                  },
+                  {
+                    key: "group",
+                    label: parseGroupedText(newItemText).groupName
+                      ? `#${parseGroupedText(newItemText).groupName}`
+                      : "#",
+                    title: "소주제 입력",
+                    ariaLabel: "소주제 입력 시작",
+                    insertText: "#",
+                    className:
+                      "border-slate-100 bg-slate-50/50 px-1.5 py-0.5 text-[11px] font-bold text-slate-400 transition hover:border-emerald-200 hover:bg-emerald-50 hover:text-emerald-600 dark:border-slate-800 dark:bg-slate-800/30 dark:text-slate-500 dark:hover:border-emerald-500/40 dark:hover:bg-emerald-500/10 dark:hover:text-emerald-300",
+                  },
+                ]}
+                placeholder=""
+                spellCheck={false}
+                autoCorrect="off"
+                autoCapitalize="off"
+                className="min-w-0 flex-1 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950 outline-none transition placeholder:text-slate-400 focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50 dark:placeholder:text-slate-500 dark:focus:border-emerald-400 dark:focus:ring-emerald-500/20"
+              />
+              <button
+                type="submit"
+                title="항목 추가"
+                disabled={!parseGroupedText(newItemText).text || savingItem}
+                className="inline-flex h-10 items-center gap-1 rounded-lg bg-emerald-600 px-3 text-sm font-semibold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-emerald-400 dark:text-slate-950 dark:hover:bg-emerald-300"
+              >
+                {savingItem ? (
+                  <Loader2 className="animate-spin" size={17} />
+                ) : (
+                  <Plus size={17} />
+                )}
+                추가
+              </button>
+            </form>
+
+            <DndContext
+              sensors={sensors}
+              collisionDetection={pointerWithin}
+              onDragStart={handleDragStart}
+              onDragEnd={handleDragEnd}
+              onDragCancel={handleDragCancel}
+            >
+              <section
+                key={activeTabId}
+                className="flex animate-fade-up gap-3 overflow-x-auto pb-3"
+                aria-label="칸반 보드"
+              >
+                {displayedStatuses.map((status) => (
+                  <KanbanColumn
+                    key={status.id}
+                    status={status}
+                    items={itemsByStatus[status.id]}
+                    onRemove={removeItem}
+                    onUpdateText={updateItemText}
+                    onUpdateMemoText={updateMemoText}
+                    onAddMemo={addMemo}
+                    onRemoveMemo={removeMemo}
+                    onFlushMemos={flushItemMemos}
+                    groupSuggestions={activeGroupNames}
+                    onMoveGroupToHidden={status.id === "done" ? moveGroupToHidden : undefined}
+                  />
+                ))}
+              </section>
+              <DragOverlay dropAnimation={null}>
+                {activeId
+                  ? (() => {
+                      const dragged = items.find(
+                        (entry) => entry.id === activeId,
+                      );
+                      if (!dragged) return null;
+                      return <ItemCardPreview item={dragged} />;
+                    })()
+                  : null}
+              </DragOverlay>
+            </DndContext>
+          </>
+        )}
+
+        {/* 캘린더 토글 */}
+        <div className="mt-2 border-t border-slate-200 pt-3 dark:border-slate-800">
+          <button
+            type="button"
+            onClick={() => setShowCalendar((v) => !v)}
+            className="flex w-full items-center justify-center gap-1.5 rounded-lg py-1.5 text-xs font-medium text-slate-400 transition hover:text-slate-600 dark:text-slate-600 dark:hover:text-slate-400"
+          >
+            <CalendarDays size={13} />
+            <span>캘린더</span>
+            <ChevronDown
+              size={13}
+              className={`transition-transform duration-200 ${showCalendar ? "rotate-180" : ""}`}
+            />
+          </button>
+          {showCalendar && (
+            <div className="mt-4 pb-4">
+              <CalendarPanel />
+            </div>
+          )}
+        </div>
+      </div>
+    </main>
+  );
+}
+
+const KR_HOLIDAYS = {
+  // 고정 공휴일 (MM-DD)
+  "01-01": "신정",
+  "03-01": "삼일절",
+  "05-05": "어린이날",
+  "06-06": "현충일",
+  "08-15": "광복절",
+  "10-03": "개천절",
+  "10-09": "한글날",
+  "12-25": "성탄절",
+  // 음력 기반 2025
+  "2025-01-27": "설날 연휴",
+  "2025-01-28": "설날 전날",
+  "2025-01-29": "설날",
+  "2025-05-06": "부처님오신날 대체",
+  "2025-10-05": "추석 연휴",
+  "2025-10-06": "추석",
+  "2025-10-07": "추석 연휴",
+  "2025-10-08": "추석 대체",
+  // 음력 기반 2026
+  "2026-02-16": "설날 연휴",
+  "2026-02-17": "설날",
+  "2026-02-18": "설날 연휴",
+  "2026-05-24": "부처님오신날",
+  "2026-05-25": "부처님오신날 대체",
+  "2026-10-01": "추석 연휴",
+  "2026-10-02": "추석",
+  "2026-10-05": "개천절 대체",
+  // 음력 기반 2027
+  "2027-02-05": "설날 연휴",
+  "2027-02-06": "설날",
+  "2027-02-07": "설날 연휴",
+  "2027-02-08": "설날 대체",
+  "2027-05-13": "부처님오신날",
+  "2027-09-20": "추석 연휴",
+  "2027-09-21": "추석",
+  "2027-09-22": "추석 연휴",
+};
+
+function getHoliday(year, month1, day) {
+  const mm = String(month1).padStart(2, "0");
+  const dd = String(day).padStart(2, "0");
+  return KR_HOLIDAYS[`${year}-${mm}-${dd}`] || KR_HOLIDAYS[`${mm}-${dd}`] || null;
+}
+
+function CalendarPanel() {
+  const today = new Date();
+  const months = [-1, 0, 1].map((offset) => {
+    const d = new Date(today.getFullYear(), today.getMonth() + offset, 1);
+    return { year: d.getFullYear(), month: d.getMonth() };
+  });
+  const DAY_LABELS = ["일", "월", "화", "수", "목", "금", "토"];
+
+  return (
+    <div className="grid grid-cols-1 gap-8 sm:grid-cols-3">
+      {months.map(({ year, month }) => {
+        const firstDow = new Date(year, month, 1).getDay();
+        const daysInMonth = new Date(year, month + 1, 0).getDate();
+        const cells = [
+          ...Array(firstDow).fill(null),
+          ...Array.from({ length: daysInMonth }, (_, i) => i + 1),
+        ];
+        while (cells.length % 7 !== 0) cells.push(null);
+
+        return (
+          <div key={`${year}-${month}`}>
+            <p className="mb-3 text-center text-sm font-semibold text-slate-600 dark:text-slate-300">
+              {year}년 {month + 1}월
+            </p>
+            <div className="grid grid-cols-7 gap-y-0.5 text-center text-xs">
+              {DAY_LABELS.map((label, i) => (
+                <div
+                  key={label}
+                  className={`pb-1.5 text-[11px] font-medium ${
+                    i === 0
+                      ? "text-rose-400 dark:text-rose-400"
+                      : i === 6
+                      ? "text-sky-400 dark:text-sky-400"
+                      : "text-slate-400 dark:text-slate-500"
+                  }`}
+                >
+                  {label}
+                </div>
+              ))}
+              {cells.map((day, i) => {
+                if (!day) return <div key={`e-${i}`} />;
+                const dow = i % 7;
+                const holiday = getHoliday(year, month + 1, day);
+                const isToday =
+                  today.getFullYear() === year &&
+                  today.getMonth() === month &&
+                  today.getDate() === day;
+                const isRed = dow === 0 || holiday;
+                const isBlue = dow === 6 && !holiday;
+
+                return (
+                  <div
+                    key={`d-${i}`}
+                    title={holiday || undefined}
+                    className={`flex h-7 items-center justify-center rounded-md text-xs font-medium transition-colors ${
+                      isToday
+                        ? "bg-emerald-100 font-bold text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-300"
+                        : holiday
+                        ? "bg-rose-50 text-rose-500 dark:bg-rose-400/10 dark:text-rose-300"
+                        : isRed
+                        ? "text-rose-400 dark:text-rose-400"
+                        : isBlue
+                        ? "text-sky-400 dark:text-sky-400"
+                        : "text-slate-600 dark:text-slate-300"
+                    }`}
+                  >
+                    {day}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function HashtagInput({
+  value,
+  onChange,
+  suggestions = [],
+  leadingItems,
+  leadingLabel = "",
+  onLeadingClick,
+  multiline = false,
+  className = "",
+  onKeyDown,
+  style,
+  ...props
+}) {
+  const [activeIndex, setActiveIndex] = useState(0);
+  const [leadingWidth, setLeadingWidth] = useState(0);
+  const leadingRef = useRef(null);
+  const inputRef = useRef(null);
+  const resolvedLeadingItems = useMemo(() => {
+    if (Array.isArray(leadingItems)) {
+      return leadingItems.filter((item) => item?.label);
+    }
+    if (!leadingLabel) return [];
+    return [
+      {
+        key: "leading",
+        label: leadingLabel,
+        title: leadingLabel,
+        ariaLabel: `현재 탭: ${leadingLabel}`,
+        onClick: onLeadingClick,
+        className:
+          "border-slate-200 bg-slate-50/80 px-2 py-1 text-xs font-bold text-slate-400 transition hover:border-emerald-200 hover:text-emerald-600 md:pointer-events-none md:hover:border-slate-200 md:hover:text-slate-400 dark:border-slate-700 dark:bg-slate-800/60 dark:text-slate-500 dark:hover:border-emerald-500/40 dark:hover:text-emerald-300 dark:md:hover:border-slate-700 dark:md:hover:text-slate-500",
+      },
+    ];
+  }, [leadingItems, leadingLabel, onLeadingClick]);
+  const query = getHashtagQuery(value);
+  const matches = useMemo(() => {
+    if (query === null) return [];
+    const lowerQuery = query.toLocaleLowerCase();
+    return suggestions
+      .filter((name) => name.toLocaleLowerCase().startsWith(lowerQuery))
+      .slice(0, 6);
+  }, [query, suggestions]);
+  const showSuggestions = matches.length > 0;
+  const InputTag = multiline ? "textarea" : "input";
+
+  useEffect(() => {
+    setActiveIndex(0);
+  }, [query]);
+
+  useLayoutEffect(() => {
+    if (resolvedLeadingItems.length === 0 || multiline) {
+      setLeadingWidth(0);
+      return undefined;
+    }
+
+    function measure() {
+      setLeadingWidth(leadingRef.current?.offsetWidth || 0);
+    }
+
+    measure();
+    window.addEventListener("resize", measure);
+    return () => window.removeEventListener("resize", measure);
+  }, [resolvedLeadingItems, multiline]);
+
+  function emitValue(nextValue) {
+    onChange({ target: { value: nextValue } });
+  }
+
+  function focusInput(selectionStart) {
+    window.requestAnimationFrame(() => {
+      const input = inputRef.current;
+      if (!input) return;
+      input.focus();
+      if (
+        Number.isInteger(selectionStart) &&
+        typeof input.setSelectionRange === "function"
+      ) {
+        input.setSelectionRange(selectionStart, selectionStart);
+      }
+    });
+  }
+
+  function insertTextAtCursor(text) {
+    const currentValue = String(value || "");
+    const input = inputRef.current;
+    const start = input?.selectionStart ?? currentValue.length;
+    const end = input?.selectionEnd ?? start;
+    const nextValue =
+      currentValue.slice(0, start) + text + currentValue.slice(end);
+
+    emitValue(nextValue);
+    focusInput(start + text.length);
+  }
+
+  function applySuggestion(name) {
+    emitValue(`#${name} `);
+    focusInput(name.length + 2);
+  }
+
+  function handleLeadingItemClick(event, item) {
+    if (item.insertText) {
+      insertTextAtCursor(item.insertText);
+      return;
+    }
+    item.onClick?.(event);
+  }
+
+  function handleKeyDown(event) {
+    if (showSuggestions) {
+      if (event.key === "ArrowDown") {
+        event.preventDefault();
+        setActiveIndex((current) => (current + 1) % matches.length);
+        return;
+      }
+      if (event.key === "ArrowUp") {
+        event.preventDefault();
+        setActiveIndex((current) => (current - 1 + matches.length) % matches.length);
+        return;
+      }
+      if (event.key === "Enter" || event.key === "Tab") {
+        event.preventDefault();
+        applySuggestion(matches[activeIndex] || matches[0]);
+        return;
+      }
+      if (event.key === "Escape") {
+        event.preventDefault();
+        setActiveIndex(0);
+        return;
+      }
+    }
+    onKeyDown?.(event);
+  }
+
+  return (
+    <div className="relative min-w-0 flex-1">
+      {resolvedLeadingItems.length > 0 && !multiline ? (
+        <div
+          ref={leadingRef}
+          className="absolute left-2 top-1/2 z-10 flex max-w-[52%] -translate-y-1/2 items-center gap-1 overflow-hidden"
+        >
+          {resolvedLeadingItems.map((item) => {
+            const commonClass = `inline-flex min-w-0 shrink items-center rounded-md border ${item.className || ""}`;
+            return item.onClick || item.insertText ? (
+              <button
+                key={item.key || item.label}
+                type="button"
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={(event) => handleLeadingItemClick(event, item)}
+                className={commonClass}
+                title={item.title || item.label}
+                aria-label={item.ariaLabel || item.label}
+              >
+                <span className="truncate">{item.label}</span>
+              </button>
+            ) : (
+              <span
+                key={item.key || item.label}
+                className={commonClass}
+                title={item.title || item.label}
+                aria-label={item.ariaLabel || item.label}
+              >
+                <span className="truncate">{item.label}</span>
+              </span>
+            );
+          })}
+        </div>
+      ) : null}
+      {false && resolvedLeadingItems.length > 0 && !multiline ? (
+        <button
+          ref={leadingRef}
+          type="button"
+          onClick={onLeadingClick}
+          className="absolute left-2 top-1/2 z-10 inline-flex max-w-[42%] -translate-y-1/2 items-center rounded-md border border-slate-200 bg-slate-50/80 px-2 py-1 text-xs font-bold text-slate-400 transition hover:border-emerald-200 hover:text-emerald-600 md:pointer-events-none md:hover:border-slate-200 md:hover:text-slate-400 dark:border-slate-700 dark:bg-slate-800/60 dark:text-slate-500 dark:hover:border-emerald-500/40 dark:hover:text-emerald-300 dark:md:hover:border-slate-700 dark:md:hover:text-slate-500"
+          title={leadingLabel}
+          aria-label={`현재 탭: ${leadingLabel}`}
+        >
+          <span className="truncate">{leadingLabel}</span>
+        </button>
+      ) : null}
+      <InputTag
+        ref={inputRef}
+        value={value}
+        onChange={onChange}
+        onKeyDown={handleKeyDown}
+        className={`w-full ${className}`}
+        style={{
+          ...style,
+          ...(leadingWidth ? { paddingLeft: `${leadingWidth + 18}px` } : {}),
+        }}
+        {...props}
+      />
+      {showSuggestions ? (
+        <div className="absolute left-0 top-full z-40 mt-1 max-h-48 w-full overflow-auto rounded-lg border border-slate-200 bg-white p-1 shadow-lg dark:border-slate-700 dark:bg-slate-900">
+          {matches.map((name, index) => (
+            <button
+              key={name}
+              type="button"
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={() => applySuggestion(name)}
+              className={`flex w-full items-center justify-between rounded-md px-2 py-1.5 text-left text-sm transition ${
+                index === activeIndex
+                  ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-200"
+                  : "text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800"
+              }`}
+            >
+              <span className="truncate">#{name}</span>
+            </button>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function KanbanColumn({
+  status,
+  items,
+  onRemove,
+  onUpdateText,
+  onUpdateMemoText,
+  onAddMemo,
+  onRemoveMemo,
+  onFlushMemos,
+  groupSuggestions,
+  onMoveGroupToHidden,
+}) {
+  const Icon = status.icon;
+  const { setNodeRef, isOver } = useDroppable({ id: status.id });
+  const ungroupedItems = items.filter((item) => !String(item.groupName || "").trim());
+  const groupedItems = items.reduce((groups, item) => {
+    const groupName = String(item.groupName || "").trim();
+    if (!groupName) return groups;
+    const existing = groups.find((group) => group.name === groupName);
+    if (existing) {
+      existing.items.push(item);
+    } else {
+      groups.push({ name: groupName, items: [item] });
+    }
+    return groups;
+  }, []);
+
+  function renderCard(item) {
+    return (
+      <ItemCard
+        key={item.id}
+        item={item}
+        onRemove={onRemove}
+        onUpdateText={onUpdateText}
+        onUpdateMemoText={onUpdateMemoText}
+        onAddMemo={onAddMemo}
+        onRemoveMemo={onRemoveMemo}
+        onFlushMemos={onFlushMemos}
+        groupSuggestions={groupSuggestions}
+      />
+    );
+  }
+
+  return (
+    <section
+      ref={setNodeRef}
+      className={`flex min-h-[420px] w-72 shrink-0 flex-col gap-3 rounded-lg border bg-white/90 p-3 shadow-soft transition-colors dark:bg-slate-950/90 lg:flex-1 ${
+        isOver
+          ? `${accentBorder(status.accent)} ${accentRing(status.accent)}`
+          : "border-slate-200 dark:border-slate-800"
+      }`}
+    >
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex min-w-0 items-center gap-2">
+          <span
+            className={`inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md ${accentBg(status.accent)}`}
+          >
+            <Icon size={16} />
+          </span>
+          <h2 className="truncate text-sm font-bold text-slate-950 dark:text-slate-50">
+            {status.label}
+          </h2>
+        </div>
+        <span className="inline-flex min-w-7 items-center justify-center rounded-md border border-slate-200 px-1.5 py-0.5 text-xs font-bold text-slate-500 dark:border-slate-700 dark:text-slate-300">
+          {items.length}
+        </span>
+      </div>
+
+      <div className="flex min-h-[80px] flex-col gap-2">
+        {items.length === 0 ? (
+          <div
+            className={`rounded-lg border border-dashed px-3 py-5 text-center text-xs transition-colors ${
+              isOver
+                ? `${accentBorder(status.accent)} bg-slate-50 dark:bg-slate-900/70`
+                : "border-slate-200 bg-slate-50 text-slate-400 dark:border-slate-700 dark:bg-slate-900/70 dark:text-slate-500"
+            }`}
+          >
+            여기로 드래그
+          </div>
+        ) : (
+          <>
+            {ungroupedItems.map(renderCard)}
+            {groupedItems.map((group) => (
+              <section key={group.name} className={`group/grp flex flex-col gap-2 border-l-2 pl-2 ${accentLeftBorder(status.accent)}`}>
+                <div className="flex items-center justify-between gap-2 px-1 pt-1">
+                  <h3 className={`min-w-0 truncate text-xs font-bold ${accentText(status.accent)}`}>
+                    #{group.name}
+                  </h3>
+                  <div className="flex items-center gap-1">
+                    {onMoveGroupToHidden ? (
+                      <button
+                        type="button"
+                        onClick={() => onMoveGroupToHidden(group.name)}
+                        title={`#${group.name} 그룹 전체 숨기기`}
+                        aria-label={`#${group.name} 그룹 전체 숨기기`}
+                        className="inline-flex h-5 w-5 items-center justify-center rounded text-slate-400 opacity-0 transition group-hover/grp:opacity-100 hover:bg-slate-100 hover:text-slate-600 dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-slate-300"
+                      >
+                        <EyeOff size={11} />
+                      </button>
+                    ) : null}
+                    <span className="inline-flex min-w-5 items-center justify-center rounded border border-slate-200 px-1 text-[11px] font-bold text-slate-400 dark:border-slate-700 dark:text-slate-500">
+                      {group.items.length}
+                    </span>
+                  </div>
+                </div>
+                {group.items.map(renderCard)}
+              </section>
+            ))}
+          </>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function MemoInput({ value, ...props }) {
+  const ref = useRef(null);
+  useLayoutEffect(() => {
+    const node = ref.current;
+    if (!node) return;
+    node.style.height = "0px";
+    node.style.height = `${node.scrollHeight}px`;
+  }, [value]);
+  return (
+    <textarea
+      ref={ref}
+      value={value}
+      rows={1}
+      spellCheck={false}
+      autoCorrect="off"
+      autoCapitalize="off"
+      {...props}
+    />
+  );
+}
+
+function ItemCard({
+  item,
+  onRemove,
+  onUpdateText,
+  onUpdateMemoText,
+  onAddMemo,
+  onRemoveMemo,
+  onFlushMemos,
+  groupSuggestions,
+}) {
+  const [isEditing, setIsEditing] = useState(false);
+  const [draft, setDraft] = useState(formatGroupedText(item));
+  const [activeMemoId, setActiveMemoId] = useState(null);
+  const status = STATUS_BY_ID[item.status];
+  const memos = Array.isArray(item.memos) ? item.memos : [];
+  const isInteracting = isEditing || activeMemoId !== null;
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    isDragging,
+  } = useDraggable({ id: item.id, disabled: isInteracting });
+
+  useEffect(() => {
+    if (!isEditing) setDraft(formatGroupedText(item));
+  }, [item.text, item.groupName, isEditing]);
+
+  function commitText() {
+    setIsEditing(false);
+    const { groupName, text } = parseGroupedText(draft);
+    if (!text) {
+      setDraft(formatGroupedText(item));
+      return;
+    }
+    if (text === item.text && groupName === (item.groupName || "")) {
+      setDraft(formatGroupedText(item));
+      return;
+    }
+    onUpdateText(item.id, text, groupName);
+  }
+
+  function cancelEdit() {
+    setDraft(formatGroupedText(item));
+    setIsEditing(false);
+  }
+
+  function stopDragPropagation(event) {
+    event.stopPropagation();
+  }
+
+  const style = transform
+    ? {
+        transform: `translate3d(${transform.x}px, ${transform.y}px, 0)`,
+      }
+    : undefined;
+
+  return (
+    <article
+      ref={setNodeRef}
+      style={style}
+      {...attributes}
+      {...listeners}
+      className={`touch-pan-x touch-pan-y group flex flex-col gap-2 rounded-lg border bg-white p-2.5 shadow-sm transition dark:bg-slate-900 ${accentBorder(status?.accent)} ${
+        isDragging
+          ? "cursor-grabbing opacity-30"
+          : isInteracting
+            ? "cursor-text"
+            : "cursor-grab"
+      }`}
+    >
+      <div className="flex items-start gap-2">
+        {isEditing ? (
+          <HashtagInput
+            multiline
+            value={draft}
+            onChange={(event) => setDraft(event.target.value)}
+            suggestions={groupSuggestions}
+            onBlur={commitText}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" && !event.shiftKey) {
+                event.preventDefault();
+                commitText();
+              } else if (event.key === "Escape") {
+                cancelEdit();
+              }
+            }}
+            autoFocus
+            rows={2}
+            spellCheck={false}
+            autoCorrect="off"
+            autoCapitalize="off"
+            className="min-w-0 flex-1 resize-none rounded border border-slate-200 bg-white px-2 py-1 text-sm text-slate-950 outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-50 dark:focus:border-emerald-400 dark:focus:ring-emerald-500/20"
+          />
+        ) : (
+          <button
+            type="button"
+            onClick={() => setIsEditing(true)}
+            className="min-w-0 flex-1 cursor-text text-left text-sm font-medium leading-6 text-slate-900 dark:text-slate-50"
+          >
+            <span className="break-words whitespace-pre-wrap">{item.text}</span>
+          </button>
+        )}
+        <button
+          type="button"
+          onPointerDown={stopDragPropagation}
+          onClick={() => onRemove(item.id)}
+          title="삭제"
+          aria-label="삭제"
+          className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded text-slate-400 opacity-0 transition group-hover:opacity-100 hover:bg-rose-50 hover:text-rose-600 dark:text-slate-500 dark:hover:bg-rose-500/10 dark:hover:text-rose-300"
+        >
+          <Trash2 size={13} />
+        </button>
+      </div>
+
+      {memos.length > 0 ? (
+        <div className="flex flex-col gap-1.5">
+          {memos.map((memo) => (
+            <div
+              key={memo.id}
+              className="flex items-start gap-1 rounded border border-slate-100 bg-slate-50/70 px-1.5 py-1 transition focus-within:border-amber-300 focus-within:bg-white dark:border-slate-800 dark:bg-slate-950/40 dark:focus-within:border-amber-300/60 dark:focus-within:bg-slate-950"
+            >
+              <MemoInput
+                value={memo.text}
+                onChange={(event) =>
+                  onUpdateMemoText(item.id, memo.id, event.target.value)
+                }
+                onFocus={() => setActiveMemoId(memo.id)}
+                onBlur={() => {
+                  setActiveMemoId((current) =>
+                    current === memo.id ? null : current,
+                  );
+                  onFlushMemos(item.id);
+                }}
+                placeholder=""
+                className="min-w-0 flex-1 resize-none overflow-hidden rounded border border-transparent bg-transparent px-1 py-0.5 text-xs leading-5 text-slate-700 outline-none transition placeholder:text-slate-400 focus:border-amber-300 dark:text-slate-300 dark:placeholder:text-slate-600 dark:focus:border-amber-300/60"
+              />
+              <button
+                type="button"
+                onPointerDown={stopDragPropagation}
+                onClick={() => onRemoveMemo(item.id, memo.id)}
+                title="메모 삭제"
+                aria-label="메모 삭제"
+                className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded text-slate-400 opacity-0 transition group-hover:opacity-100 hover:bg-rose-50 hover:text-rose-600 dark:text-slate-500 dark:hover:bg-rose-500/10 dark:hover:text-rose-300"
+              >
+                <X size={11} />
+              </button>
+            </div>
+          ))}
+        </div>
+      ) : null}
+
+      <button
+        type="button"
+        onPointerDown={stopDragPropagation}
+        onClick={() => onAddMemo(item.id)}
+        title="메모 추가"
+        aria-label="메모 추가"
+        className="inline-flex h-5 w-5 items-center justify-center self-start rounded text-slate-400 transition hover:bg-amber-50 hover:text-amber-700 dark:text-slate-500 dark:hover:bg-amber-500/10 dark:hover:text-amber-200"
+      >
+        <Plus size={12} />
+      </button>
+    </article>
+  );
+}
+
+function ItemCardPreview({ item }) {
+  const status = STATUS_BY_ID[item.status];
+  const memos = Array.isArray(item.memos) ? item.memos : [];
+  return (
+    <article
+      className={`flex w-72 cursor-grabbing flex-col gap-2 rounded-lg border bg-white p-2.5 shadow-xl ring-2 ring-emerald-300 dark:bg-slate-900 dark:ring-emerald-400/40 ${accentBorder(status?.accent)}`}
+    >
+      <p className="break-words whitespace-pre-wrap text-sm font-medium leading-6 text-slate-900 dark:text-slate-50">
+        {item.text}
+      </p>
+      {memos.length > 0 ? (
+        <div className="flex flex-col gap-1">
+          {memos.map((memo) =>
+            memo.text ? (
+              <p
+                key={memo.id}
+                className="break-words whitespace-pre-wrap rounded bg-slate-50 px-1.5 py-1 text-xs leading-5 text-slate-500 dark:bg-slate-950/60 dark:text-slate-400"
+              >
+                {memo.text}
+              </p>
+            ) : null,
+          )}
+        </div>
+      ) : null}
+    </article>
+  );
+}
+
+function accentBg(accent) {
+  switch (accent) {
+    case "emerald":
+      return "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-200";
+    case "sky":
+      return "bg-sky-100 text-sky-700 dark:bg-sky-500/20 dark:text-sky-200";
+    case "amber":
+      return "bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-200";
+    case "violet":
+      return "bg-violet-100 text-violet-700 dark:bg-violet-500/20 dark:text-violet-200";
+    default:
+      return "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-200";
+  }
+}
+
+function accentBorder(accent) {
+  switch (accent) {
+    case "emerald":
+      return "border-emerald-100 dark:border-emerald-500/20";
+    case "sky":
+      return "border-sky-100 dark:border-sky-500/20";
+    case "amber":
+      return "border-amber-100 dark:border-amber-500/20";
+    case "violet":
+      return "border-violet-100 dark:border-violet-500/20";
+    default:
+      return "border-slate-200 dark:border-slate-800";
+  }
+}
+
+function accentRing(accent) {
+  switch (accent) {
+    case "emerald":
+      return "ring-2 ring-emerald-300 dark:ring-emerald-400/40";
+    case "sky":
+      return "ring-2 ring-sky-300 dark:ring-sky-400/40";
+    case "amber":
+      return "ring-2 ring-amber-300 dark:ring-amber-400/40";
+    case "violet":
+      return "ring-2 ring-violet-300 dark:ring-violet-400/40";
+    default:
+      return "ring-2 ring-slate-300 dark:ring-slate-500/40";
+  }
+}
+
+function accentText(accent) {
+  switch (accent) {
+    case "emerald": return "text-emerald-600 dark:text-emerald-400";
+    case "sky": return "text-sky-600 dark:text-sky-400";
+    case "amber": return "text-amber-600 dark:text-amber-400";
+    case "violet": return "text-violet-600 dark:text-violet-400";
+    default: return "text-slate-500 dark:text-slate-400";
+  }
+}
+
+function accentLeftBorder(accent) {
+  switch (accent) {
+    case "emerald": return "border-emerald-300 dark:border-emerald-500/50";
+    case "sky": return "border-sky-300 dark:border-sky-500/50";
+    case "amber": return "border-amber-300 dark:border-amber-500/50";
+    case "violet": return "border-violet-300 dark:border-violet-500/50";
+    default: return "border-slate-300 dark:border-slate-600";
+  }
+}
+
+function SortableTab({
+  tab,
+  isActive,
+  isHighlighted = false,
+  onActivate,
+  onRemove,
+  onRename,
+}) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: tab.id });
+
+  const [isEditing, setIsEditing] = useState(false);
+  const [draftName, setDraftName] = useState(tab.name);
+  const inputRef = useRef(null);
+
+  useEffect(() => {
+    if (!isEditing) setDraftName(tab.name);
+  }, [tab.name, isEditing]);
+
+  useEffect(() => {
+    if (isEditing && inputRef.current) {
+      inputRef.current.focus();
+      inputRef.current.select();
+    }
+  }, [isEditing]);
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+    zIndex: isDragging ? 10 : undefined,
+  };
+
+  function commitRename() {
+    const trimmed = draftName.trim();
+    if (trimmed && trimmed !== tab.name) {
+      onRename?.(tab.id, trimmed);
+    } else {
+      setDraftName(tab.name);
+    }
+    setIsEditing(false);
+  }
+
+  function cancelRename() {
+    setDraftName(tab.name);
+    setIsEditing(false);
+  }
+
+  const dragProps = isEditing ? {} : { ...attributes, ...listeners };
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      {...dragProps}
+      className={`group inline-flex touch-none select-none items-center gap-1 rounded-md transition ${
+        isActive
+          ? "bg-slate-950 text-white shadow-sm dark:bg-emerald-400 dark:text-slate-950"
+          : "text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
+      } ${isHighlighted ? "ring-2 ring-emerald-300 ring-offset-2 ring-offset-white dark:ring-emerald-300 dark:ring-offset-slate-950" : ""} ${
+        isEditing ? "cursor-text" : isDragging ? "cursor-grabbing" : "cursor-grab"
+      }`}
+    >
+      {isEditing ? (
+        <input
+          ref={inputRef}
+          value={draftName}
+          onChange={(event) => setDraftName(event.target.value)}
+          onPointerDown={(event) => event.stopPropagation()}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") {
+              event.preventDefault();
+              commitRename();
+            } else if (event.key === "Escape") {
+              event.preventDefault();
+              cancelRename();
+            }
+          }}
+          onBlur={commitRename}
+          maxLength={60}
+          spellCheck={false}
+          autoCorrect="off"
+          autoCapitalize="off"
+          className={`mx-1 my-1 h-7 w-28 rounded-md border bg-white px-2 text-sm font-semibold text-slate-950 outline-none focus:ring-2 dark:bg-slate-900 dark:text-slate-50 ${
+            isActive
+              ? "border-emerald-400 focus:ring-emerald-200 dark:border-emerald-300 dark:focus:ring-emerald-500/30"
+              : "border-slate-300 focus:ring-emerald-100 dark:border-slate-700 dark:focus:ring-emerald-500/20"
+          }`}
+        />
+      ) : (
+        <button
+          type="button"
+          onClick={() => onActivate(tab.id)}
+          onDoubleClick={() => setIsEditing(true)}
+          title="더블클릭하여 이름 변경"
+          className="rounded-md px-3 py-2 text-sm font-semibold"
+        >
+          {tab.name}
+        </button>
+      )}
+      <button
+        type="button"
+        title={`${tab.name} 삭제`}
+        aria-label={`${tab.name} 삭제`}
+        onPointerDown={(event) => event.stopPropagation()}
+        onClick={() => onRemove(tab.id)}
+        className={`mr-1 hidden h-6 w-6 items-center justify-center rounded transition group-hover:inline-flex focus-visible:inline-flex ${
+          isActive
+            ? "text-white/70 hover:bg-white/10 hover:text-white dark:text-slate-950/60 dark:hover:bg-slate-950/10"
+            : "text-slate-400 hover:bg-slate-200 hover:text-rose-600 dark:text-slate-500 dark:hover:bg-slate-700 dark:hover:text-rose-300"
+        }`}
+      >
+        <X size={13} />
+      </button>
+    </div>
+  );
+}
+
+function IconButton({ title, ariaLabel, onClick, children }) {
+  return (
+    <button
+      type="button"
+      title={title}
+      aria-label={ariaLabel}
+      onClick={onClick}
+      className="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-700 shadow-sm transition hover:border-emerald-300 hover:text-emerald-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:border-emerald-400 dark:hover:text-emerald-300"
+    >
+      {children}
+    </button>
+  );
+}
+
+function SettingsMenu({
+  theme,
+  onSetTheme,
+  showHidden,
+  onToggleHidden,
+  onLogout,
+}) {
+  const [open, setOpen] = useState(false);
+  const containerRef = useRef(null);
+
+  useEffect(() => {
+    if (!open) return undefined;
+    function handleOutside(event) {
+      if (containerRef.current && !containerRef.current.contains(event.target)) {
+        setOpen(false);
+      }
+    }
+    function handleKey(event) {
+      if (event.key === "Escape") setOpen(false);
+    }
+    document.addEventListener("mousedown", handleOutside);
+    document.addEventListener("touchstart", handleOutside);
+    document.addEventListener("keydown", handleKey);
+    return () => {
+      document.removeEventListener("mousedown", handleOutside);
+      document.removeEventListener("touchstart", handleOutside);
+      document.removeEventListener("keydown", handleKey);
+    };
+  }, [open]);
+
+  const themeOptionClass = (active) =>
+    `flex flex-1 items-center justify-center gap-1 rounded-md px-2 py-1.5 text-xs font-semibold transition ${
+      active
+        ? "bg-slate-950 text-white dark:bg-emerald-400 dark:text-slate-950"
+        : "text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
+    }`;
+
+  return (
+    <div ref={containerRef} className="relative">
+      <IconButton
+        title="설정"
+        ariaLabel="설정"
+        onClick={() => setOpen((value) => !value)}
+      >
+        <Settings size={18} />
+      </IconButton>
+      {open ? (
+        <div className="absolute right-0 top-full z-30 mt-2 w-60 rounded-lg border border-slate-200 bg-white p-2 shadow-lg dark:border-slate-700 dark:bg-slate-900">
+          <div className="px-2 pb-1 pt-1 text-[11px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">
+            테마
+          </div>
+          <div className="flex gap-1 px-1 pb-2">
+            <button
+              type="button"
+              onClick={() => onSetTheme("light")}
+              className={themeOptionClass(theme === "light")}
+            >
+              <Sun size={14} /> 라이트
+            </button>
+            <button
+              type="button"
+              onClick={() => onSetTheme("dark")}
+              className={themeOptionClass(theme === "dark")}
+            >
+              <Moon size={14} /> 다크
+            </button>
+          </div>
+          <button
+            type="button"
+            onClick={onToggleHidden}
+            className="flex w-full items-center justify-between gap-2 rounded-md px-2 py-2 text-sm text-slate-700 transition hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800"
+          >
+            <span className="inline-flex items-center gap-2">
+              {showHidden ? <Eye size={14} /> : <EyeOff size={14} />}
+              숨김 칸
+            </span>
+            <span className="text-xs text-slate-400 dark:text-slate-500">
+              {showHidden ? "표시 중" : "숨김"}
+            </span>
+          </button>
+          <hr className="my-1 border-slate-200 dark:border-slate-700" />
+          <button
+            type="button"
+            onClick={() => {
+              setOpen(false);
+              onLogout();
+            }}
+            className="flex w-full items-center gap-2 rounded-md px-2 py-2 text-sm text-rose-600 transition hover:bg-rose-50 dark:text-rose-300 dark:hover:bg-rose-500/10"
+          >
+            <LogOut size={14} /> 로그아웃
+          </button>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function LoadingShell({ theme, onToggleTheme, children }) {
+  return (
+    <main className="flex min-h-screen items-center justify-center px-4 py-8 text-slate-950 transition-colors duration-300 dark:text-slate-50">
+      <div className="w-full max-w-md">
+        <div className="mb-4 flex items-center justify-between">
+          <p className="text-sm font-medium tracking-normal text-slate-400 dark:text-slate-500">
+            Kanban Board
+          </p>
+          <IconButton
+            title="테마 전환"
+            ariaLabel="테마 전환"
+            onClick={onToggleTheme}
+          >
+            {theme === "dark" ? <Sun size={18} /> : <Moon size={18} />}
+          </IconButton>
+        </div>
+        <section className="flex min-h-48 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 shadow-soft dark:border-slate-800 dark:bg-slate-950 dark:text-slate-400">
+          <Loader2 className="mr-2 animate-spin" size={18} />
+          {children}
+        </section>
+      </div>
+    </main>
+  );
+}
+
+function LoginScreen({
+  theme,
+  password,
+  error,
+  isLoading,
+  onToggleTheme,
+  onPasswordChange,
+  onSubmit,
+}) {
+  return (
+    <main className="flex min-h-screen items-center justify-center px-4 py-8 text-slate-950 transition-colors duration-300 dark:text-slate-50">
+      <div className="w-full max-w-md">
+        <div className="mb-4 flex items-center justify-between">
+          <p className="text-sm font-medium tracking-normal text-slate-400 dark:text-slate-500">
+            Kanban Board
+          </p>
+          <IconButton
+            title="테마 전환"
+            ariaLabel="테마 전환"
+            onClick={onToggleTheme}
+          >
+            {theme === "dark" ? <Sun size={18} /> : <Moon size={18} />}
+          </IconButton>
+        </div>
+
+        <form
+          onSubmit={onSubmit}
+          className="rounded-lg border border-slate-200 bg-white p-5 shadow-soft dark:border-slate-800 dark:bg-slate-950"
+        >
+          <div className="mb-4 flex items-center gap-2 text-slate-600 dark:text-slate-300">
+            <LockKeyhole size={18} />
+            <h1 className="text-base font-semibold">비밀번호</h1>
+          </div>
+          <input
+            type="password"
+            value={password}
+            onChange={(event) => onPasswordChange(event.target.value)}
+            autoFocus
+            className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950 outline-none transition placeholder:text-slate-400 focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50 dark:placeholder:text-slate-500 dark:focus:border-emerald-400 dark:focus:ring-emerald-500/20"
+          />
+          {error ? (
+            <p className="mt-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-200">
+              {error}
+            </p>
+          ) : null}
+          <button
+            type="submit"
+            disabled={!password.trim() || isLoading}
+            className="mt-4 inline-flex h-10 w-full items-center justify-center rounded-lg bg-slate-950 px-4 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-emerald-400 dark:text-slate-950 dark:hover:bg-emerald-300"
+          >
+            {isLoading ? <Loader2 className="animate-spin" size={17} /> : "로그인"}
+          </button>
+        </form>
+      </div>
+    </main>
+  );
+}
+
+export default App;

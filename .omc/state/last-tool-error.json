@@ -1,0 +1,7 @@
+{
+  "tool_name": "PowerShell",
+  "tool_input_preview": "{\"command\":\"$img = [System.Drawing.Image]::FromFile(\\\"C:\\\\Users\\\\jazz2\\\\Codex\\\\AI_Study\\\\kanban Icon.png\\\"); \\\"Size: $($img.Width)x$($img.Height)\\\"; $img.Dispose()\",\"description\":\"Get original image d...",
+  "error": "Exit code 1\nUnable to find type [System.Drawing.Image].\r\nAt line:1 char:8\r\n+ $img = [System.Drawing.Image]::FromFile(\"C:\\Users\\jazz2\\Codex\\AI_Stud ...\r\n+        ~~~~~~~~~~~~~~~~~~~~~~\r\n    + CategoryInfo          : InvalidOperation: (System.Drawing.Image:TypeName) [], RuntimeException\r\n    + FullyQualifiedErrorId : TypeNotFound\r\n \r\nSize: x\r\nYou cannot call a method on a null-valued expression.\r\nAt line:1 char:129\r\n+ ... nban Icon.png\"); \"Size: $($img.Width)x$($img.Height)\"; $img.Dispose()\r\n+    ...",
+  "timestamp": "2026-05-02T14:40:01.773Z",
+  "retry_count": 1
+}

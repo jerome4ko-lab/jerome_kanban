@@ -1,0 +1,237 @@
+{
+  "version": "1.0.0",
+  "lastScanned": 1777817597730,
+  "projectRoot": "c:\\Users\\jazz2\\Codex\\AI_Study",
+  "techStack": {
+    "languages": [
+      {
+        "name": "JavaScript/TypeScript",
+        "version": null,
+        "confidence": "high",
+        "markers": [
+          "package.json"
+        ]
+      }
+    ],
+    "frameworks": [
+      {
+        "name": "react",
+        "version": "18.3.1",
+        "category": "frontend"
+      },
+      {
+        "name": "react-dom",
+        "version": "18.3.1",
+        "category": "frontend"
+      },
+      {
+        "name": "vite",
+        "version": "5.4.11",
+        "category": "build"
+      }
+    ],
+    "packageManager": "npm",
+    "runtime": null
+  },
+  "build": {
+    "buildCommand": "npm run build",
+    "testCommand": null,
+    "lintCommand": null,
+    "devCommand": "npm run dev",
+    "scripts": {
+      "dev": "vite --host 127.0.0.1 --port 5175 --strictPort",
+      "build": "vite build",
+      "preview": "vite preview",
+      "start": "node server.mjs"
+    }
+  },
+  "conventions": {
+    "namingStyle": null,
+    "importStyle": null,
+    "testPattern": null,
+    "fileOrganization": null
+  },
+  "structure": {
+    "isMonorepo": false,
+    "workspaces": [],
+    "mainDirectories": [
+      "public",
+      "src"
+    ],
+    "gitBranches": null
+  },
+  "customNotes": [],
+  "directoryMap": {
+    "dist": {
+      "path": "dist",
+      "purpose": "Distribution/build output",
+      "fileCount": 11,
+      "lastAccessed": 1777817597665,
+      "keyFiles": [
+        "apple-touch-icon-180x180.png",
+        "favicon.ico",
+        "index.html",
+        "manifest.webmanifest",
+        "maskable-icon-512x512.png"
+      ]
+    },
+    "playtest": {
+      "path": "playtest",
+      "purpose": null,
+      "fileCount": 4,
+      "lastAccessed": 1777817597679,
+      "keyFiles": [
+        "desktop-dark.png",
+        "desktop.png",
+        "mobile.png",
+        "railway-desktop.png"
+      ]
+    },
+    "public": {
+      "path": "public",
+      "purpose": "Public files",
+      "fileCount": 6,
+      "lastAccessed": 1777817597680,
+      "keyFiles": [
+        "apple-touch-icon-180x180.png",
+        "favicon.ico",
+        "maskable-icon-512x512.png",
+        "pwa-192x192.png",
+        "pwa-512x512.png"
+      ]
+    },
+    "server": {
+      "path": "server",
+      "purpose": null,
+      "fileCount": 1,
+      "lastAccessed": 1777817597681,
+      "keyFiles": [
+        "api.mjs"
+      ]
+    },
+    "src": {
+      "path": "src",
+      "purpose": "Source code",
+      "fileCount": 3,
+      "lastAccessed": 1777817597682,
+      "keyFiles": [
+        "App.jsx",
+        "index.css",
+        "main.jsx"
+      ]
+    },
+    "Temp": {
+      "path": "Temp",
+      "purpose": null,
+      "fileCount": 2,
+      "lastAccessed": 1777817597682,
+      "keyFiles": [
+        "image.png",
+        "image2.png"
+      ]
+    },
+    "dist\\assets": {
+      "path": "dist\\assets",
+      "purpose": "Static assets",
+      "fileCount": 2,
+      "lastAccessed": 1777817597684,
+      "keyFiles": [
+        "index-DmNzPpLJ.css",
+        "index-_QUwDzxr.js"
+      ]
+    }
+  },
+  "hotPaths": [
+    {
+      "path": "src\\App.jsx",
+      "accessCount": 95,
+      "lastAccessed": 1777735629469,
+      "type": "file"
+    },
+    {
+      "path": "",
+      "accessCount": 11,
+      "lastAccessed": 1777732759330,
+      "type": "directory"
+    },
+    {
+      "path": "vite.config.js",
+      "accessCount": 6,
+      "lastAccessed": 1777732946574,
+      "type": "file"
+    },
+    {
+      "path": "package.json",
+      "accessCount": 5,
+      "lastAccessed": 1777731239894,
+      "type": "file"
+    },
+    {
+      "path": "index.html",
+      "accessCount": 5,
+      "lastAccessed": 1777732945374,
+      "type": "file"
+    },
+    {
+      "path": "server\\api.mjs",
+      "accessCount": 5,
+      "lastAccessed": 1777735578342,
+      "type": "file"
+    },
+    {
+      "path": "src\\index.css",
+      "accessCount": 2,
+      "lastAccessed": 1777731053563,
+      "type": "file"
+    },
+    {
+      "path": "Temp\\image.png",
+      "accessCount": 2,
+      "lastAccessed": 1777735257753,
+      "type": "file"
+    },
+    {
+      "path": "src/App.jsx",
+      "accessCount": 1,
+      "lastAccessed": 1777698071989,
+      "type": "directory"
+    },
+    {
+      "path": "public\\icon.svg",
+      "accessCount": 1,
+      "lastAccessed": 1777730282290,
+      "type": "file"
+    },
+    {
+      "path": "src\\main.jsx",
+      "accessCount": 1,
+      "lastAccessed": 1777731076559,
+      "type": "file"
+    },
+    {
+      "path": "railway.json",
+      "accessCount": 1,
+      "lastAccessed": 1777731252451,
+      "type": "file"
+    },
+    {
+      "path": "kanban Icon.png",
+      "accessCount": 1,
+      "lastAccessed": 1777732775826,
+      "type": "file"
+    },
+    {
+      "path": "Temp\\image2.png",
+      "accessCount": 1,
+      "lastAccessed": 1777735258367,
+      "type": "file"
+    },
+    {
+      "path": "server",
+      "accessCount": 1,
+      "lastAccessed": 1777735274274,
+      "type": "directory"
+    }
+  ],
+  "userDirectives": []
+}

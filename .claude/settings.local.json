@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(railway up *)",
+      "PowerShell(npm run *)",
+      "PowerShell(railway logs *)",
+      "PowerShell(railway status *)",
+      "PowerShell($img = [System.Drawing.Image]::FromFile\\(\"C:\\\\Users\\\\jazz2\\\\Codex\\\\AI_Study\\\\kanban Icon.png\"\\); \"Size: $\\($img.Width\\)x$\\($img.Height\\)\"; $img.Dispose\\(\\))"
+    ]
+  }
+}
