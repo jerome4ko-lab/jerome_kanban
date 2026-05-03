@@ -192,6 +192,11 @@ async function loadSubscriptions() {
   return serverSubs;
 }
 
+async function loadCalendarNotes() {
+  const res = await apiRequest("/api/calendar-notes");
+  return Array.isArray(res.notes) ? res.notes : [];
+}
+
 function dDayLabel(expiryDate) {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -326,6 +331,7 @@ function App() {
   const [theme, setTheme] = useTheme();
   const [showHidden, setShowHidden] = useShowHidden();
   const [subscriptions, setSubscriptions] = useState([]);
+  const [calendarNotes, setCalendarNotes] = useState([]);
   const [authStatus, setAuthStatus] = useState("checking");
   const [tabs, setTabs] = useState([]);
   const [items, setItems] = useState([]);
@@ -438,13 +444,15 @@ function App() {
         setIsReady(false);
 
         try {
-          const [dashboard, subs] = await Promise.all([
+          const [dashboard, subs, notes] = await Promise.all([
             apiRequest("/api/dashboard"),
             loadSubscriptions(),
+            loadCalendarNotes(),
           ]);
           if (isMounted) {
             applyDashboard(dashboard);
             setSubscriptions(subs);
+            setCalendarNotes(notes);
             setError("");
           }
         } catch (requestError) {
@@ -480,18 +488,32 @@ function App() {
       }
     }
 
-    function handleVisibilityChange() {
-      if (document.visibilityState === "visible") {
-        syncSubscriptions();
+    async function syncCalendarNotes() {
+      try {
+        const notes = await loadCalendarNotes();
+        if (isMounted) setCalendarNotes(notes);
+      } catch (requestError) {
+        if (isMounted) handleRequestError(requestError);
       }
     }
 
-    window.addEventListener("focus", syncSubscriptions);
+    function handleSync() {
+      syncSubscriptions();
+      syncCalendarNotes();
+    }
+
+    function handleVisibilityChange() {
+      if (document.visibilityState === "visible") {
+        handleSync();
+      }
+    }
+
+    window.addEventListener("focus", handleSync);
     document.addEventListener("visibilitychange", handleVisibilityChange);
 
     return () => {
       isMounted = false;
-      window.removeEventListener("focus", syncSubscriptions);
+      window.removeEventListener("focus", handleSync);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
   }, [authStatus]);
@@ -549,6 +571,12 @@ function App() {
     return subs;
   }
 
+  async function refreshCalendarNotes() {
+    const notes = await loadCalendarNotes();
+    setCalendarNotes(notes);
+    return notes;
+  }
+
   function toggleTheme() {
     setTheme(theme === "dark" ? "light" : "dark");
   }
@@ -570,13 +598,15 @@ function App() {
         method: "POST",
         body: JSON.stringify({ password }),
       });
-      const [dashboard, subs] = await Promise.all([
+      const [dashboard, subs, notes] = await Promise.all([
         apiRequest("/api/dashboard"),
         loadSubscriptions(),
+        loadCalendarNotes(),
       ]);
 
       applyDashboard(dashboard);
       setSubscriptions(subs);
+      setCalendarNotes(notes);
       setLoginPassword("");
       setAuthStatus("authenticated");
       setError("");
@@ -612,6 +642,56 @@ function App() {
     }
   }
 
+  async function handleAddCalendarNote(date, text) {
+    const cleanText = String(text || "").trim();
+    if (!cleanText) return;
+    try {
+      const res = await apiRequest("/api/calendar-notes", {
+        method: "POST",
+        body: JSON.stringify({ date, text: cleanText }),
+      });
+      if (res?.note) {
+        setCalendarNotes((prev) => [...prev, res.note]);
+      } else {
+        await refreshCalendarNotes();
+      }
+    } catch (requestError) {
+      handleRequestError(requestError);
+    }
+  }
+
+  async function handleUpdateCalendarNote(id, patch) {
+    try {
+      const res = await apiRequest(
+        `/api/calendar-notes/${encodeURIComponent(id)}`,
+        {
+          method: "PATCH",
+          body: JSON.stringify(patch),
+        },
+      );
+      if (res?.note) {
+        setCalendarNotes((prev) =>
+          prev.map((n) => (n.id === id ? res.note : n)),
+        );
+      } else {
+        await refreshCalendarNotes();
+      }
+    } catch (requestError) {
+      handleRequestError(requestError);
+    }
+  }
+
+  async function handleDeleteCalendarNote(id) {
+    try {
+      await apiRequest(`/api/calendar-notes/${encodeURIComponent(id)}`, {
+        method: "DELETE",
+      });
+      setCalendarNotes((prev) => prev.filter((n) => n.id !== id));
+    } catch (requestError) {
+      handleRequestError(requestError);
+    }
+  }
+
   async function handleLogout() {
     try {
       await apiRequest("/api/logout", { method: "POST" });
@@ -624,6 +704,7 @@ function App() {
       setNewItemText("");
       setNewTabName("");
       setError("");
+      setCalendarNotes([]);
     }
   }
 
@@ -1226,7 +1307,12 @@ function App() {
           </button>
           {showCalendar && (
             <div className="mt-4 pb-4">
-              <CalendarPanel />
+              <CalendarPanel
+                notes={calendarNotes}
+                onAdd={handleAddCalendarNote}
+                onUpdate={handleUpdateCalendarNote}
+                onDelete={handleDeleteCalendarNote}
+              />
             </div>
           )}
         </div>
@@ -1280,13 +1366,38 @@ function getHoliday(year, month1, day) {
   return KR_HOLIDAYS[`${year}-${mm}-${dd}`] || KR_HOLIDAYS[`${mm}-${dd}`] || null;
 }
 
-function CalendarPanel() {
+function formatDateKey(year, month0, day) {
+  const mm = String(month0 + 1).padStart(2, "0");
+  const dd = String(day).padStart(2, "0");
+  return `${year}-${mm}-${dd}`;
+}
+
+function CalendarPanel({ notes = [], onAdd, onUpdate, onDelete }) {
   const today = new Date();
   const months = [-1, 0, 1].map((offset) => {
     const d = new Date(today.getFullYear(), today.getMonth() + offset, 1);
     return { year: d.getFullYear(), month: d.getMonth() };
   });
   const DAY_LABELS = ["일", "월", "화", "수", "목", "금", "토"];
+
+  const [openDateKey, setOpenDateKey] = useState(null);
+
+  const notesByDate = useMemo(() => {
+    const map = new Map();
+    for (const n of notes) {
+      if (!n?.date) continue;
+      const list = map.get(n.date) || [];
+      list.push(n);
+      map.set(n.date, list);
+    }
+    for (const list of map.values()) {
+      list.sort(
+        (a, b) =>
+          String(a.createdAt || "").localeCompare(String(b.createdAt || "")),
+      );
+    }
+    return map;
+  }, [notes]);
 
   return (
     <div className="grid grid-cols-1 gap-8 sm:grid-cols-3">
@@ -1320,7 +1431,8 @@ function CalendarPanel() {
                 </div>
               ))}
               {cells.map((day, i) => {
-                if (!day) return <div key={`e-${i}`} />;
+                if (!day)
+                  return <div key={`e-${i}`} className="min-h-[2.5rem]" />;
                 const dow = i % 7;
                 const holiday = getHoliday(year, month + 1, day);
                 const isToday =
@@ -1329,24 +1441,78 @@ function CalendarPanel() {
                   today.getDate() === day;
                 const isRed = dow === 0 || holiday;
                 const isBlue = dow === 6 && !holiday;
+                const dateKey = formatDateKey(year, month, day);
+                const dayNotes = notesByDate.get(dateKey) || [];
+                const isOpen = openDateKey === dateKey;
+
+                let popoverAlign = "left-1/2 -translate-x-1/2";
+                if (dow <= 1) popoverAlign = "left-0";
+                else if (dow >= 5) popoverAlign = "right-0";
+
+                const numberColor = isToday
+                  ? "text-emerald-700 dark:text-emerald-300"
+                  : holiday
+                  ? "text-rose-500 dark:text-rose-300"
+                  : isRed
+                  ? "text-rose-400 dark:text-rose-400"
+                  : isBlue
+                  ? "text-sky-400 dark:text-sky-400"
+                  : "text-slate-600 dark:text-slate-300";
+
+                const cellBg = isToday
+                  ? "bg-emerald-100 dark:bg-emerald-500/20"
+                  : holiday
+                  ? "bg-rose-50 dark:bg-rose-400/10"
+                  : "hover:bg-slate-100 dark:hover:bg-slate-800/60";
 
                 return (
-                  <div
-                    key={`d-${i}`}
-                    title={holiday || undefined}
-                    className={`flex h-7 items-center justify-center rounded-md text-xs font-medium transition-colors ${
-                      isToday
-                        ? "bg-emerald-100 font-bold text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-300"
-                        : holiday
-                        ? "bg-rose-50 text-rose-500 dark:bg-rose-400/10 dark:text-rose-300"
-                        : isRed
-                        ? "text-rose-400 dark:text-rose-400"
-                        : isBlue
-                        ? "text-sky-400 dark:text-sky-400"
-                        : "text-slate-600 dark:text-slate-300"
-                    }`}
-                  >
-                    {day}
+                  <div key={`d-${i}`} className="relative">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setOpenDateKey((prev) =>
+                          prev === dateKey ? null : dateKey,
+                        )
+                      }
+                      title={holiday || undefined}
+                      className={`flex min-h-[2.5rem] w-full flex-col items-stretch rounded-md px-0.5 py-0.5 text-xs font-medium transition-colors ${cellBg}`}
+                    >
+                      <span
+                        className={`text-center leading-tight ${numberColor} ${
+                          isToday ? "font-bold" : ""
+                        }`}
+                      >
+                        {day}
+                      </span>
+                      {dayNotes.length > 0 && (
+                        <span className="mt-0.5 flex flex-col gap-px overflow-hidden">
+                          {dayNotes.slice(0, 2).map((n) => (
+                            <span
+                              key={n.id}
+                              className="truncate rounded bg-slate-200/60 px-0.5 text-[9px] font-normal leading-tight text-slate-700 dark:bg-slate-700/50 dark:text-slate-200"
+                            >
+                              {n.text}
+                            </span>
+                          ))}
+                          {dayNotes.length > 2 && (
+                            <span className="text-[9px] font-normal leading-tight text-slate-500 dark:text-slate-400">
+                              +{dayNotes.length - 2}
+                            </span>
+                          )}
+                        </span>
+                      )}
+                    </button>
+                    {isOpen && (
+                      <CalendarDayPopover
+                        dateKey={dateKey}
+                        notes={dayNotes}
+                        alignClass={popoverAlign}
+                        onClose={() => setOpenDateKey(null)}
+                        onAdd={onAdd}
+                        onUpdate={onUpdate}
+                        onDelete={onDelete}
+                      />
+                    )}
                   </div>
                 );
               })}
@@ -1355,6 +1521,158 @@ function CalendarPanel() {
         );
       })}
     </div>
+  );
+}
+
+function CalendarDayPopover({
+  dateKey,
+  notes,
+  alignClass,
+  onClose,
+  onAdd,
+  onUpdate,
+  onDelete,
+}) {
+  const containerRef = useRef(null);
+  const [draftText, setDraftText] = useState("");
+
+  useEffect(() => {
+    function handlePointerDown(event) {
+      if (
+        containerRef.current &&
+        !containerRef.current.contains(event.target)
+      ) {
+        onClose();
+      }
+    }
+    function handleKeyDown(event) {
+      if (event.key === "Escape") onClose();
+    }
+    document.addEventListener("mousedown", handlePointerDown);
+    document.addEventListener("touchstart", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", handlePointerDown);
+      document.removeEventListener("touchstart", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [onClose]);
+
+  const dow = useMemo(() => {
+    const [y, m, d] = dateKey.split("-").map(Number);
+    const labels = ["일", "월", "화", "수", "목", "금", "토"];
+    return labels[new Date(y, m - 1, d).getDay()];
+  }, [dateKey]);
+
+  function submitDraft() {
+    const text = draftText.trim();
+    if (!text) return;
+    onAdd?.(dateKey, text);
+    setDraftText("");
+  }
+
+  return (
+    <div
+      ref={containerRef}
+      onClick={(e) => e.stopPropagation()}
+      className={`absolute top-full z-30 mt-1 w-56 rounded-lg border border-slate-200 bg-white p-2 text-left shadow-lg dark:border-slate-700 dark:bg-slate-900 ${alignClass}`}
+    >
+      <div className="mb-1.5 flex items-center justify-between text-[11px] font-semibold text-slate-600 dark:text-slate-300">
+        <span>
+          {dateKey} ({dow})
+        </span>
+        <button
+          type="button"
+          onClick={onClose}
+          className="rounded p-0.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-800 dark:hover:text-slate-200"
+        >
+          <X size={12} />
+        </button>
+      </div>
+      {notes.length > 0 && (
+        <ul className="mb-1.5 flex flex-col gap-1">
+          {notes.map((n) => (
+            <CalendarNoteRow
+              key={n.id}
+              note={n}
+              onUpdate={onUpdate}
+              onDelete={onDelete}
+            />
+          ))}
+        </ul>
+      )}
+      <div className="flex items-center gap-1">
+        <input
+          type="text"
+          value={draftText}
+          onChange={(e) => setDraftText(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              submitDraft();
+            }
+          }}
+          placeholder="메모 추가"
+          maxLength={200}
+          className="flex-1 rounded border border-slate-200 bg-white px-1.5 py-1 text-[11px] text-slate-700 placeholder:text-slate-400 focus:border-emerald-400 focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:placeholder:text-slate-500"
+          autoFocus
+        />
+        <button
+          type="button"
+          onClick={submitDraft}
+          disabled={!draftText.trim()}
+          className="rounded bg-emerald-500 px-1.5 py-1 text-[11px] font-medium text-white transition hover:bg-emerald-600 disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          추가
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function CalendarNoteRow({ note, onUpdate, onDelete }) {
+  const [text, setText] = useState(note.text);
+
+  useEffect(() => {
+    setText(note.text);
+  }, [note.text, note.id]);
+
+  function commit() {
+    const next = text.trim();
+    if (!next) {
+      onDelete?.(note.id);
+      return;
+    }
+    if (next !== note.text) {
+      onUpdate?.(note.id, { text: next });
+    }
+  }
+
+  return (
+    <li className="flex items-center gap-1">
+      <input
+        type="text"
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            e.currentTarget.blur();
+          }
+        }}
+        maxLength={200}
+        className="flex-1 rounded border border-transparent bg-slate-100 px-1.5 py-1 text-[11px] text-slate-700 focus:border-emerald-400 focus:bg-white focus:outline-none dark:bg-slate-800 dark:text-slate-100 dark:focus:bg-slate-900"
+      />
+      <button
+        type="button"
+        onClick={() => onDelete?.(note.id)}
+        className="rounded p-0.5 text-slate-400 hover:bg-rose-50 hover:text-rose-500 dark:hover:bg-rose-500/10 dark:hover:text-rose-300"
+        title="삭제"
+      >
+        <X size={12} />
+      </button>
+    </li>
   );
 }
 

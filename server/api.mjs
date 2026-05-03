@@ -148,6 +148,17 @@ async function ensureSchema(env) {
           created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
           updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
         );
+
+        CREATE TABLE IF NOT EXISTS calendar_notes (
+          id UUID PRIMARY KEY,
+          note_date DATE NOT NULL,
+          text TEXT NOT NULL,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        );
+
+        CREATE INDEX IF NOT EXISTS calendar_notes_date_idx
+          ON calendar_notes (note_date);
       `);
 
       await db.query(`
@@ -403,6 +414,35 @@ function validateExpiryDate(value) {
   return cleanValue;
 }
 
+function rowToCalendarNote(row) {
+  let date = row.note_date;
+  if (date instanceof Date) {
+    const y = date.getFullYear();
+    const m = String(date.getMonth() + 1).padStart(2, "0");
+    const d = String(date.getDate()).padStart(2, "0");
+    date = `${y}-${m}-${d}`;
+  } else if (typeof date === "string") {
+    date = date.slice(0, 10);
+  } else {
+    date = "";
+  }
+  return {
+    id: row.id,
+    date,
+    text: row.text || "",
+    createdAt: toIso(row.created_at),
+    updatedAt: toIso(row.updated_at),
+  };
+}
+
+function validateNoteDate(value) {
+  const cleanValue = String(value || "").trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(cleanValue)) {
+    throw new HttpError(400, "날짜 형식이 올바르지 않습니다 (YYYY-MM-DD).");
+  }
+  return cleanValue;
+}
+
 function validateSubscriptionId(value) {
   const cleanValue = String(value || "").trim();
   if (!cleanValue || cleanValue.length > 100) {
@@ -448,6 +488,86 @@ async function deleteSubscription(env, id) {
   );
   if (result.rowCount === 0) {
     throw new HttpError(404, "구독을 찾을 수 없습니다.");
+  }
+}
+
+async function listCalendarNotes(env) {
+  await ensureSchema(env);
+  const result = await getPool(env).query(
+    `SELECT id, note_date, text, created_at, updated_at
+       FROM calendar_notes
+       ORDER BY note_date ASC, created_at ASC`,
+  );
+  return result.rows.map(rowToCalendarNote);
+}
+
+async function createCalendarNote(env, payload) {
+  await ensureSchema(env);
+  const date = validateNoteDate(payload.date);
+  const text = validateText(payload.text, "캘린더 메모", 200);
+  const id = randomUUID();
+
+  const result = await getPool(env).query(
+    `
+      INSERT INTO calendar_notes (id, note_date, text)
+      VALUES ($1, $2, $3)
+      RETURNING id, note_date, text, created_at, updated_at
+    `,
+    [id, date, text],
+  );
+  return rowToCalendarNote(result.rows[0]);
+}
+
+async function updateCalendarNote(env, id, payload) {
+  await ensureSchema(env);
+  const cleanId = String(id || "").trim();
+  if (!cleanId) {
+    throw new HttpError(400, "메모 ID가 올바르지 않습니다.");
+  }
+
+  const fields = [];
+  const params = [];
+
+  if (payload.date !== undefined) {
+    fields.push(`note_date = $${params.length + 1}`);
+    params.push(validateNoteDate(payload.date));
+  }
+  if (payload.text !== undefined) {
+    fields.push(`text = $${params.length + 1}`);
+    params.push(validateText(payload.text, "캘린더 메모", 200));
+  }
+
+  if (fields.length === 0) {
+    throw new HttpError(400, "수정할 내용이 없습니다.");
+  }
+
+  fields.push(`updated_at = NOW()`);
+  params.push(cleanId);
+
+  const result = await getPool(env).query(
+    `
+      UPDATE calendar_notes
+      SET ${fields.join(", ")}
+      WHERE id = $${params.length}
+      RETURNING id, note_date, text, created_at, updated_at
+    `,
+    params,
+  );
+
+  if (result.rowCount === 0) {
+    throw new HttpError(404, "메모를 찾을 수 없습니다.");
+  }
+  return rowToCalendarNote(result.rows[0]);
+}
+
+async function deleteCalendarNote(env, id) {
+  await ensureSchema(env);
+  const result = await getPool(env).query(
+    `DELETE FROM calendar_notes WHERE id = $1`,
+    [id],
+  );
+  if (result.rowCount === 0) {
+    throw new HttpError(404, "메모를 찾을 수 없습니다.");
   }
 }
 
@@ -773,6 +893,39 @@ export function createApiHandler(options = {}) {
         const subId = decodeURIComponent(subscriptionMatch[1]);
         if (req.method === "DELETE") {
           await deleteSubscription(env, subId);
+          sendJson(res, 200, { ok: true });
+          return true;
+        }
+        throw new HttpError(405, "지원하지 않는 요청입니다.");
+      }
+
+      if (pathname === "/api/calendar-notes") {
+        if (req.method === "GET") {
+          sendJson(res, 200, { notes: await listCalendarNotes(env) });
+          return true;
+        }
+        if (req.method === "POST") {
+          sendJson(res, 201, {
+            note: await createCalendarNote(env, await readJson(req)),
+          });
+          return true;
+        }
+        throw new HttpError(405, "지원하지 않는 요청입니다.");
+      }
+
+      const calendarNoteMatch = pathname.match(
+        /^\/api\/calendar-notes\/([^/]+)$/,
+      );
+      if (calendarNoteMatch) {
+        const noteId = decodeURIComponent(calendarNoteMatch[1]);
+        if (req.method === "PATCH") {
+          sendJson(res, 200, {
+            note: await updateCalendarNote(env, noteId, await readJson(req)),
+          });
+          return true;
+        }
+        if (req.method === "DELETE") {
+          await deleteCalendarNote(env, noteId);
           sendJson(res, 200, { ok: true });
           return true;
         }
