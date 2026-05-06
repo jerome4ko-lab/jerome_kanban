@@ -338,9 +338,21 @@ function App() {
   const [activeTabId, setActiveTabId] = useState("");
   const [isReady, setIsReady] = useState(false);
   const [error, setError] = useState("");
+  const [authMode, setAuthMode] = useState("login");
+  const [currentUser, setCurrentUser] = useState(null);
+  const [loginUsername, setLoginUsername] = useState("");
   const [loginPassword, setLoginPassword] = useState("");
   const [loginError, setLoginError] = useState("");
   const [loginLoading, setLoginLoading] = useState(false);
+  const [signupForm, setSignupForm] = useState({
+    username: "",
+    password: "",
+    passwordConfirm: "",
+    email: "",
+    signupCode: "",
+  });
+  const [signupError, setSignupError] = useState("");
+  const [signupLoading, setSignupLoading] = useState(false);
   const [newTabName, setNewTabName] = useState("");
   const [showAddTab, setShowAddTab] = useState(false);
   const [savingTab, setSavingTab] = useState(false);
@@ -440,6 +452,9 @@ function App() {
           return;
         }
 
+        if (session.user) {
+          setCurrentUser(session.user);
+        }
         setAuthStatus("authenticated");
         setIsReady(false);
 
@@ -583,9 +598,10 @@ function App() {
 
   async function handleLogin(event) {
     event.preventDefault();
-    const password = loginPassword.trim();
-    if (!password) {
-      setLoginError("비밀번호를 입력해주세요.");
+    const username = loginUsername.trim();
+    const password = loginPassword;
+    if (!username || !password) {
+      setLoginError("사용자명과 비밀번호를 입력해주세요.");
       return;
     }
 
@@ -594,10 +610,13 @@ function App() {
     setIsReady(false);
 
     try {
-      await apiRequest("/api/session", {
+      const session = await apiRequest("/api/session", {
         method: "POST",
-        body: JSON.stringify({ password }),
+        body: JSON.stringify({ username, password }),
       });
+      if (session?.user) {
+        setCurrentUser(session.user);
+      }
       const [dashboard, subs, notes] = await Promise.all([
         apiRequest("/api/dashboard"),
         loadSubscriptions(),
@@ -608,6 +627,7 @@ function App() {
       setSubscriptions(subs);
       setCalendarNotes(notes);
       setLoginPassword("");
+      setLoginUsername("");
       setAuthStatus("authenticated");
       setError("");
       setIsReady(true);
@@ -616,6 +636,62 @@ function App() {
       setIsReady(false);
     } finally {
       setLoginLoading(false);
+    }
+  }
+
+  async function handleSignup(event) {
+    event.preventDefault();
+    const { username, password, passwordConfirm, email, signupCode } = signupForm;
+    if (!username.trim() || !password || !signupCode) {
+      setSignupError("사용자명, 비밀번호, 가입 코드를 입력해주세요.");
+      return;
+    }
+    if (password !== passwordConfirm) {
+      setSignupError("비밀번호 확인이 일치하지 않습니다.");
+      return;
+    }
+
+    setSignupError("");
+    setSignupLoading(true);
+    setIsReady(false);
+
+    try {
+      const session = await apiRequest("/api/users", {
+        method: "POST",
+        body: JSON.stringify({
+          username: username.trim(),
+          password,
+          email: email.trim() || undefined,
+          signupCode,
+        }),
+      });
+      if (session?.user) {
+        setCurrentUser(session.user);
+      }
+      const [dashboard, subs, notes] = await Promise.all([
+        apiRequest("/api/dashboard"),
+        loadSubscriptions(),
+        loadCalendarNotes(),
+      ]);
+
+      applyDashboard(dashboard);
+      setSubscriptions(subs);
+      setCalendarNotes(notes);
+      setSignupForm({
+        username: "",
+        password: "",
+        passwordConfirm: "",
+        email: "",
+        signupCode: "",
+      });
+      setAuthStatus("authenticated");
+      setError("");
+      setIsReady(true);
+    } catch (requestError) {
+      setSignupError(errorMessage(requestError));
+      setIsReady(false);
+    } finally {
+      setSignupLoading(false);
     }
   }
 
@@ -697,6 +773,9 @@ function App() {
       await apiRequest("/api/logout", { method: "POST" });
     } finally {
       setAuthStatus("unauthenticated");
+      setAuthMode("login");
+      setCurrentUser(null);
+      setSubscriptions([]);
       setTabs([]);
       setItems([]);
       setActiveTabId("");
@@ -1009,15 +1088,38 @@ function App() {
   }
 
   if (authStatus !== "authenticated") {
+    if (authMode === "signup") {
+      return (
+        <SignupScreen
+          theme={theme}
+          form={signupForm}
+          error={signupError}
+          isLoading={signupLoading}
+          onToggleTheme={toggleTheme}
+          onChange={(patch) => setSignupForm((prev) => ({ ...prev, ...patch }))}
+          onSubmit={handleSignup}
+          onSwitchToLogin={() => {
+            setAuthMode("login");
+            setSignupError("");
+          }}
+        />
+      );
+    }
     return (
       <LoginScreen
         theme={theme}
+        username={loginUsername}
         password={loginPassword}
         error={loginError}
         isLoading={loginLoading}
         onToggleTheme={toggleTheme}
+        onUsernameChange={setLoginUsername}
         onPasswordChange={setLoginPassword}
         onSubmit={handleLogin}
+        onSwitchToSignup={() => {
+          setAuthMode("signup");
+          setLoginError("");
+        }}
       />
     );
   }
@@ -1042,6 +1144,7 @@ function App() {
               showHidden={showHidden}
               onToggleHidden={() => setShowHidden((value) => !value)}
               onLogout={handleLogout}
+              currentUser={currentUser}
             />
           </div>
 
@@ -2431,6 +2534,7 @@ function SettingsMenu({
   showHidden,
   onToggleHidden,
   onLogout,
+  currentUser,
 }) {
   const [open, setOpen] = useState(false);
   const containerRef = useRef(null);
@@ -2473,6 +2577,18 @@ function SettingsMenu({
       </IconButton>
       {open ? (
         <div className="absolute right-0 top-full z-30 mt-2 w-60 rounded-lg border border-slate-200 bg-white p-2 shadow-lg dark:border-slate-700 dark:bg-slate-900">
+          {currentUser ? (
+            <div className="mb-1 rounded-md bg-slate-50 px-2 py-2 text-xs text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+              <div className="font-semibold text-slate-900 dark:text-slate-100">
+                {currentUser.username}
+              </div>
+              {currentUser.email ? (
+                <div className="text-slate-500 dark:text-slate-400">
+                  {currentUser.email}
+                </div>
+              ) : null}
+            </div>
+          ) : null}
           <div className="px-2 pb-1 pt-1 text-[11px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">
             테마
           </div>
@@ -2547,30 +2663,51 @@ function LoadingShell({ theme, onToggleTheme, children }) {
   );
 }
 
+const authInputClass =
+  "w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950 outline-none transition placeholder:text-slate-400 focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50 dark:placeholder:text-slate-500 dark:focus:border-emerald-400 dark:focus:ring-emerald-500/20";
+
+const authPrimaryButtonClass =
+  "mt-4 inline-flex h-10 w-full items-center justify-center rounded-lg bg-slate-950 px-4 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-emerald-400 dark:text-slate-950 dark:hover:bg-emerald-300";
+
+const authErrorBoxClass =
+  "mt-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-200";
+
+const authSwitchLinkClass =
+  "ml-1 font-semibold text-emerald-600 hover:underline dark:text-emerald-400";
+
+function AuthHeader({ theme, onToggleTheme }) {
+  return (
+    <div className="mb-4 flex items-center justify-between">
+      <p className="font-serif text-4xl font-bold tracking-tight text-slate-900 dark:text-slate-50">
+        Pace
+      </p>
+      <IconButton
+        title="테마 전환"
+        ariaLabel="테마 전환"
+        onClick={onToggleTheme}
+      >
+        {theme === "dark" ? <Sun size={18} /> : <Moon size={18} />}
+      </IconButton>
+    </div>
+  );
+}
+
 function LoginScreen({
   theme,
+  username,
   password,
   error,
   isLoading,
   onToggleTheme,
+  onUsernameChange,
   onPasswordChange,
   onSubmit,
+  onSwitchToSignup,
 }) {
   return (
     <main className="flex min-h-screen items-center justify-center px-4 py-8 text-slate-950 transition-colors duration-300 dark:text-slate-50">
       <div className="w-full max-w-md">
-        <div className="mb-4 flex items-center justify-between">
-          <p className="font-serif text-4xl font-bold tracking-tight text-slate-900 dark:text-slate-50">
-            Pace
-          </p>
-          <IconButton
-            title="테마 전환"
-            ariaLabel="테마 전환"
-            onClick={onToggleTheme}
-          >
-            {theme === "dark" ? <Sun size={18} /> : <Moon size={18} />}
-          </IconButton>
-        </div>
+        <AuthHeader theme={theme} onToggleTheme={onToggleTheme} />
 
         <form
           onSubmit={onSubmit}
@@ -2578,27 +2715,175 @@ function LoginScreen({
         >
           <div className="mb-4 flex items-center gap-2 text-slate-600 dark:text-slate-300">
             <LockKeyhole size={18} />
-            <h1 className="text-base font-semibold">비밀번호</h1>
+            <h1 className="text-base font-semibold">로그인</h1>
           </div>
+
+          <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+            사용자명
+          </label>
+          <input
+            type="text"
+            autoComplete="username"
+            value={username}
+            onChange={(event) => onUsernameChange(event.target.value)}
+            autoFocus
+            className={authInputClass}
+          />
+
+          <label className="mb-1 mt-3 block text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+            비밀번호
+          </label>
           <input
             type="password"
+            autoComplete="current-password"
             value={password}
             onChange={(event) => onPasswordChange(event.target.value)}
-            autoFocus
-            className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950 outline-none transition placeholder:text-slate-400 focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50 dark:placeholder:text-slate-500 dark:focus:border-emerald-400 dark:focus:ring-emerald-500/20"
+            className={authInputClass}
           />
-          {error ? (
-            <p className="mt-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-200">
-              {error}
-            </p>
-          ) : null}
+
+          {error ? <p className={authErrorBoxClass}>{error}</p> : null}
+
           <button
             type="submit"
-            disabled={!password.trim() || isLoading}
-            className="mt-4 inline-flex h-10 w-full items-center justify-center rounded-lg bg-slate-950 px-4 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-emerald-400 dark:text-slate-950 dark:hover:bg-emerald-300"
+            disabled={!username.trim() || !password || isLoading}
+            className={authPrimaryButtonClass}
           >
-            {isLoading ? <Loader2 className="animate-spin" size={17} /> : "로그인"}
+            {isLoading ? (
+              <Loader2 className="animate-spin" size={17} />
+            ) : (
+              "로그인"
+            )}
           </button>
+
+          <p className="mt-4 text-center text-xs text-slate-500 dark:text-slate-400">
+            계정이 없으신가요?
+            <button
+              type="button"
+              onClick={onSwitchToSignup}
+              className={authSwitchLinkClass}
+            >
+              회원가입
+            </button>
+          </p>
+        </form>
+      </div>
+    </main>
+  );
+}
+
+function SignupScreen({
+  theme,
+  form,
+  error,
+  isLoading,
+  onToggleTheme,
+  onChange,
+  onSubmit,
+  onSwitchToLogin,
+}) {
+  const canSubmit =
+    form.username.trim() &&
+    form.password &&
+    form.passwordConfirm &&
+    form.signupCode &&
+    !isLoading;
+
+  return (
+    <main className="flex min-h-screen items-center justify-center px-4 py-8 text-slate-950 transition-colors duration-300 dark:text-slate-50">
+      <div className="w-full max-w-md">
+        <AuthHeader theme={theme} onToggleTheme={onToggleTheme} />
+
+        <form
+          onSubmit={onSubmit}
+          className="rounded-lg border border-slate-200 bg-white p-5 shadow-soft dark:border-slate-800 dark:bg-slate-950"
+        >
+          <div className="mb-4 flex items-center gap-2 text-slate-600 dark:text-slate-300">
+            <LockKeyhole size={18} />
+            <h1 className="text-base font-semibold">회원가입</h1>
+          </div>
+
+          <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+            사용자명 (영문 소문자/숫자/_, 3~30자)
+          </label>
+          <input
+            type="text"
+            autoComplete="username"
+            value={form.username}
+            onChange={(event) => onChange({ username: event.target.value })}
+            autoFocus
+            className={authInputClass}
+          />
+
+          <label className="mb-1 mt-3 block text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+            이메일 (선택)
+          </label>
+          <input
+            type="email"
+            autoComplete="email"
+            value={form.email}
+            onChange={(event) => onChange({ email: event.target.value })}
+            className={authInputClass}
+          />
+
+          <label className="mb-1 mt-3 block text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+            비밀번호 (최소 8자)
+          </label>
+          <input
+            type="password"
+            autoComplete="new-password"
+            value={form.password}
+            onChange={(event) => onChange({ password: event.target.value })}
+            className={authInputClass}
+          />
+
+          <label className="mb-1 mt-3 block text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+            비밀번호 확인
+          </label>
+          <input
+            type="password"
+            autoComplete="new-password"
+            value={form.passwordConfirm}
+            onChange={(event) =>
+              onChange({ passwordConfirm: event.target.value })
+            }
+            className={authInputClass}
+          />
+
+          <label className="mb-1 mt-3 block text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+            가입 코드
+          </label>
+          <input
+            type="text"
+            autoComplete="off"
+            value={form.signupCode}
+            onChange={(event) => onChange({ signupCode: event.target.value })}
+            className={authInputClass}
+          />
+
+          {error ? <p className={authErrorBoxClass}>{error}</p> : null}
+
+          <button
+            type="submit"
+            disabled={!canSubmit}
+            className={authPrimaryButtonClass}
+          >
+            {isLoading ? (
+              <Loader2 className="animate-spin" size={17} />
+            ) : (
+              "가입하기"
+            )}
+          </button>
+
+          <p className="mt-4 text-center text-xs text-slate-500 dark:text-slate-400">
+            이미 계정이 있으신가요?
+            <button
+              type="button"
+              onClick={onSwitchToLogin}
+              className={authSwitchLinkClass}
+            >
+              로그인
+            </button>
+          </p>
         </form>
       </div>
     </main>
