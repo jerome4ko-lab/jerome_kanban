@@ -37,9 +37,9 @@ export default defineConfig(({ mode }) => {
         registerType: "autoUpdate",
         includeAssets: ["favicon.ico", "apple-touch-icon-180x180.png"],
         manifest: {
-          name: "Jerome's Kanban",
-          short_name: "Kanban",
-          description: "Jerome의 개인 칸반 보드",
+          name: "Pace",
+          short_name: "Pace",
+          description: "Pace 칸반 보드",
           display: "standalone",
           orientation: "portrait",
           background_color: "#0f172a",

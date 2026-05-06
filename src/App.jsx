@@ -252,10 +252,10 @@ function SubscriptionBar({ subscriptions, onSave, onDelete }) {
   }
 
   return (
-    <div className="flex w-full flex-wrap items-center justify-start gap-1.5 md:w-auto md:justify-end">
+    <div className="group/sub grid w-full grid-cols-2 items-center gap-1.5 md:flex md:w-auto md:flex-wrap md:justify-end">
       {[...subscriptions].sort((a, b) => new Date(a.expiryDate) - new Date(b.expiryDate)).map((sub) =>
         editingId === sub.id ? (
-          <div key={sub.id} className="flex items-center gap-1 rounded-md border border-slate-300 bg-white px-1.5 py-0.5 dark:border-slate-700 dark:bg-slate-900">
+          <div key={sub.id} className="col-span-2 flex items-center gap-1 rounded-md border border-slate-300 bg-white px-1.5 py-0.5 dark:border-slate-700 dark:bg-slate-900 md:col-span-1">
             <input
               autoFocus
               value={draftName}
@@ -277,13 +277,13 @@ function SubscriptionBar({ subscriptions, onSave, onDelete }) {
         ) : (
           <div
             key={sub.id}
-            className="group flex cursor-pointer items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-2.5 py-0.5 text-xs transition hover:border-slate-300 hover:bg-white dark:border-slate-700 dark:bg-slate-800/60 dark:hover:border-slate-600 dark:hover:bg-slate-800"
+            className="group flex cursor-pointer items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-2.5 py-0.5 text-xs transition hover:border-slate-300 hover:bg-white dark:border-slate-700 dark:bg-slate-800/60 dark:hover:border-slate-600 dark:hover:bg-slate-800"
             onClick={() => startEdit(sub)}
             title="클릭하여 수정"
           >
-            <span className="font-medium text-slate-600 dark:text-slate-300">{sub.name}</span>
-            <span className="text-slate-400 dark:text-slate-500">{formatDisplayDate(sub.expiryDate)}</span>
-            <span className={`font-semibold tabular-nums ${dDayColor(sub.expiryDate)}`}>{dDayLabel(sub.expiryDate)}</span>
+            <span className="min-w-0 flex-1 truncate text-left font-medium text-slate-600 dark:text-slate-300">{sub.name}</span>
+            <span className="shrink-0 tabular-nums text-slate-400 dark:text-slate-500">{formatDisplayDate(sub.expiryDate)}</span>
+            <span className={`shrink-0 font-semibold tabular-nums ${dDayColor(sub.expiryDate)}`}>{dDayLabel(sub.expiryDate)}</span>
             <button
               onClick={(e) => { e.stopPropagation(); onDelete(sub.id); }}
               className="ml-0.5 text-slate-300 opacity-0 transition hover:text-rose-400 group-hover:opacity-100 dark:text-slate-600 dark:hover:text-rose-400"
@@ -295,7 +295,7 @@ function SubscriptionBar({ subscriptions, onSave, onDelete }) {
         )
       )}
       {editingId === "new" ? (
-        <div className="flex items-center gap-1 rounded-md border border-slate-300 bg-white px-1.5 py-0.5 dark:border-slate-700 dark:bg-slate-900">
+        <div className="col-span-2 flex items-center gap-1 rounded-md border border-slate-300 bg-white px-1.5 py-0.5 dark:border-slate-700 dark:bg-slate-900 md:col-span-1">
           <input
             autoFocus
             value={draftName}
@@ -317,7 +317,7 @@ function SubscriptionBar({ subscriptions, onSave, onDelete }) {
       ) : (
         <button
           onClick={startNew}
-          className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-dashed border-slate-300 text-slate-400 transition hover:border-emerald-400 hover:text-emerald-500 dark:border-slate-600 dark:text-slate-500 dark:hover:border-emerald-500 dark:hover:text-emerald-400"
+          className="inline-flex h-5 w-5 items-center justify-center justify-self-end rounded-full text-slate-300 transition hover:text-emerald-500 dark:text-slate-600 dark:hover:text-emerald-400 md:border md:border-dashed md:border-slate-300 md:text-slate-400 md:opacity-0 md:transition-opacity md:hover:border-emerald-400 md:group-hover/sub:opacity-100 md:focus-visible:opacity-100 md:dark:border-slate-600 md:dark:text-slate-500 md:dark:hover:border-emerald-500"
           title="구독 추가"
         >
           +
@@ -1025,26 +1025,27 @@ function App() {
   return (
     <main className="min-h-screen px-4 py-5 text-slate-950 transition-colors duration-300 dark:text-slate-50 sm:px-6 lg:px-8">
       <div className="mx-auto flex w-full max-w-[1600px] flex-col gap-5">
-        <header className="flex flex-col gap-4 border-b border-slate-200 pb-5 pt-3 dark:border-slate-800 md:flex-row md:items-end md:justify-between">
-          <div className="pt-5">
-            <p className="text-sm font-medium tracking-normal text-slate-400 dark:text-slate-500">
-              Jerome's Kanban Board
+        <header className="grid grid-cols-[1fr_auto] items-baseline gap-x-3 gap-y-3 border-b border-slate-200 pb-5 pt-3 dark:border-slate-800 md:gap-x-4">
+          <div className="md:row-span-2">
+            <p className="font-serif text-4xl font-bold tracking-tight text-slate-900 dark:text-slate-50">
+              Pace
             </p>
           </div>
 
-          <div className="flex w-full flex-col gap-1.5 self-end md:w-auto md:items-end md:self-auto">
-            <div className="flex items-center justify-end gap-3">
-              <span className="text-sm font-medium tabular-nums text-slate-500 dark:text-slate-400">
-                {formatToday()}
-              </span>
-              <SettingsMenu
-                theme={theme}
-                onSetTheme={setTheme}
-                showHidden={showHidden}
-                onToggleHidden={() => setShowHidden((value) => !value)}
-                onLogout={handleLogout}
-              />
-            </div>
+          <div className="flex items-center justify-self-end gap-3">
+            <span className="text-sm font-medium tabular-nums text-slate-500 dark:text-slate-400">
+              {formatToday()}
+            </span>
+            <SettingsMenu
+              theme={theme}
+              onSetTheme={setTheme}
+              showHidden={showHidden}
+              onToggleHidden={() => setShowHidden((value) => !value)}
+              onLogout={handleLogout}
+            />
+          </div>
+
+          <div className="col-span-2 md:col-span-1 md:col-start-2 md:row-start-2 md:justify-self-end">
             <SubscriptionBar
               subscriptions={subscriptions}
               onSave={handleSaveSub}
@@ -1098,7 +1099,7 @@ function App() {
           <nav
             aria-label="주제"
             ref={tabNavRef}
-            className="flex flex-wrap items-center gap-2 rounded-lg border border-slate-200 bg-white p-2 shadow-sm dark:border-slate-800 dark:bg-slate-950"
+            className="group/tabs flex flex-wrap items-center gap-2 rounded-lg border border-slate-200 bg-white p-2 shadow-sm dark:border-slate-800 dark:bg-slate-950"
           >
             <SortableContext
               items={tabs.map((tab) => tab.id)}
@@ -1165,9 +1166,10 @@ function App() {
             <button
               type="button"
               onClick={() => setShowAddTab(true)}
-              className="ml-auto inline-flex h-9 items-center gap-1 rounded-md border border-dashed border-slate-300 px-3 text-sm font-medium text-slate-500 transition hover:border-emerald-400 hover:bg-emerald-50 hover:text-emerald-700 dark:border-slate-700 dark:text-slate-400 dark:hover:border-emerald-500 dark:hover:bg-emerald-500/10 dark:hover:text-emerald-200"
+              className="ml-auto inline-flex h-9 w-9 items-center justify-center rounded-md text-slate-300 transition hover:text-emerald-500 dark:text-slate-600 dark:hover:text-emerald-400 md:w-auto md:gap-1 md:border md:border-dashed md:border-slate-300 md:px-3 md:text-sm md:font-medium md:text-slate-500 md:opacity-0 md:transition-opacity md:hover:border-emerald-400 md:hover:bg-emerald-50 md:hover:text-emerald-700 md:group-hover/tabs:opacity-100 md:focus-visible:opacity-100 md:dark:border-slate-700 md:dark:text-slate-400 md:dark:hover:border-emerald-500 md:dark:hover:bg-emerald-500/10 md:dark:hover:text-emerald-200"
             >
-              <Plus size={14} />새 주제
+              <Plus size={14} />
+              <span className="hidden md:inline">새 주제</span>
             </button>
           )}
           </nav>
@@ -2525,8 +2527,8 @@ function LoadingShell({ theme, onToggleTheme, children }) {
     <main className="flex min-h-screen items-center justify-center px-4 py-8 text-slate-950 transition-colors duration-300 dark:text-slate-50">
       <div className="w-full max-w-md">
         <div className="mb-4 flex items-center justify-between">
-          <p className="text-sm font-medium tracking-normal text-slate-400 dark:text-slate-500">
-            Kanban Board
+          <p className="font-serif text-4xl font-bold tracking-tight text-slate-900 dark:text-slate-50">
+            Pace
           </p>
           <IconButton
             title="테마 전환"
@@ -2558,8 +2560,8 @@ function LoginScreen({
     <main className="flex min-h-screen items-center justify-center px-4 py-8 text-slate-950 transition-colors duration-300 dark:text-slate-50">
       <div className="w-full max-w-md">
         <div className="mb-4 flex items-center justify-between">
-          <p className="text-sm font-medium tracking-normal text-slate-400 dark:text-slate-500">
-            Kanban Board
+          <p className="font-serif text-4xl font-bold tracking-tight text-slate-900 dark:text-slate-50">
+            Pace
           </p>
           <IconButton
             title="테마 전환"
