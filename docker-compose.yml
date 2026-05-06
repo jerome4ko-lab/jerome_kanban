@@ -1,0 +1,23 @@
+services:
+  postgres:
+    image: postgres:18
+    environment:
+      POSTGRES_USER: jerome
+      POSTGRES_PASSWORD: 1234
+      POSTGRES_DB: kanban
+    volumes:
+      - postgres_data:/var/lib/postgresql
+    restart: always
+
+  app:
+    build: .
+    ports:
+      - "4173:4173"
+    env_file:
+      - .env
+    depends_on:
+      - postgres
+    restart: always
+
+volumes:
+  postgres_data:
