@@ -353,6 +353,9 @@ function App() {
   });
   const [signupError, setSignupError] = useState("");
   const [signupLoading, setSignupLoading] = useState(false);
+  const [toast, setToast] = useState(null);
+  const toastIdRef = useRef(0);
+  const toastTimerRef = useRef(null);
   const [newTabName, setNewTabName] = useState("");
   const [showAddTab, setShowAddTab] = useState(false);
   const [savingTab, setSavingTab] = useState(false);
@@ -536,6 +539,7 @@ function App() {
   useEffect(() => {
     return () => {
       if (tabHintTimer.current) window.clearTimeout(tabHintTimer.current);
+      if (toastTimerRef.current) window.clearTimeout(toastTimerRef.current);
       itemTimers.current.forEach((timerId) => window.clearTimeout(timerId));
       itemTimers.current.clear();
     };
@@ -937,7 +941,7 @@ function App() {
 
   async function moveItem(itemId, nextStatus) {
     const previous = items.find((entry) => entry.id === itemId);
-    if (!previous || previous.status === nextStatus) return;
+    if (!previous || previous.status === nextStatus) return false;
 
     setItems((current) =>
       current.map((entry) =>
@@ -955,11 +959,37 @@ function App() {
       setItems((current) =>
         current.map((entry) => (entry.id === itemId ? item : entry)),
       );
+      return true;
     } catch (requestError) {
       setItems((current) =>
         current.map((entry) => (entry.id === itemId ? previous : entry)),
       );
       handleRequestError(requestError);
+      return false;
+    }
+  }
+
+  function showToast(message) {
+    toastIdRef.current += 1;
+    const id = toastIdRef.current;
+    setToast({ id, message });
+    if (toastTimerRef.current) {
+      window.clearTimeout(toastTimerRef.current);
+    }
+    toastTimerRef.current = window.setTimeout(() => {
+      setToast((current) => (current && current.id === id ? null : current));
+      toastTimerRef.current = null;
+    }, 2500);
+  }
+
+  async function handleCheckInProgress(itemId) {
+    const target = items.find((entry) => entry.id === itemId);
+    if (!target) return;
+    const text = target.text;
+    const ok = await moveItem(itemId, "done");
+    if (ok) {
+      const truncated = text.length > 40 ? `${text.slice(0, 40)}…` : text;
+      showToast(`완료로 이동: ${truncated}`);
     }
   }
 
@@ -1167,14 +1197,18 @@ function App() {
               return (
                 <div
                   key={item.id}
-                  className="mb-1 flex break-inside-avoid gap-1.5 break-words"
+                  className="mb-1 flex break-inside-avoid items-start gap-1.5 break-words"
                 >
-                  <span
-                    aria-hidden="true"
-                    className="select-none text-slate-300 dark:text-slate-600"
-                  >
-                    •
-                  </span>
+                  <input
+                    type="checkbox"
+                    aria-label={`완료로 이동: ${item.text}`}
+                    onChange={(event) => {
+                      if (event.target.checked) {
+                        handleCheckInProgress(item.id);
+                      }
+                    }}
+                    className="mt-[3px] h-3.5 w-3.5 shrink-0 cursor-pointer accent-emerald-500"
+                  />
                   {tabName ? (
                     <>
                       <span className="inline-block w-12 shrink-0 text-center text-slate-400 dark:text-slate-500">
@@ -1422,6 +1456,7 @@ function App() {
           )}
         </div>
       </div>
+      <Toast toast={toast} />
     </main>
   );
 }
@@ -2660,6 +2695,27 @@ function LoadingShell({ theme, onToggleTheme, children }) {
         </section>
       </div>
     </main>
+  );
+}
+
+function Toast({ toast }) {
+  return (
+    <div
+      aria-live="polite"
+      aria-atomic="true"
+      className="pointer-events-none fixed inset-x-0 bottom-6 z-50 flex justify-center px-4"
+    >
+      <div
+        key={toast?.id || 0}
+        className={`max-w-sm truncate rounded-lg bg-slate-900/95 px-4 py-2 text-sm font-medium text-white shadow-lg transition-all duration-200 dark:bg-emerald-500/95 dark:text-slate-950 ${
+          toast
+            ? "translate-y-0 opacity-100"
+            : "pointer-events-none translate-y-2 opacity-0"
+        }`}
+      >
+        {toast?.message ?? ""}
+      </div>
+    </div>
   );
 }
 
