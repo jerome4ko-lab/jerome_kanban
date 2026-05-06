@@ -1,6 +1,6 @@
 # Pace — 칸반 보드
 
-React/Vite 프런트, Node.js 백엔드, PostgreSQL을 사용하는 개인용 칸반 보드. PWA로 설치 가능하며 자체 호스팅 Ubuntu 서버에 Docker Compose로 배포한다.
+React/Vite 프런트, Node.js 백엔드, PostgreSQL을 사용하는 멀티 유저 칸반 보드. 가입 코드 기반 회원가입과 유저별 데이터 격리를 지원하며, PWA로 설치 가능하다. 자체 호스팅 Ubuntu 서버에 Docker Compose로 배포한다.
 
 ## 요구 사항
 
@@ -28,15 +28,31 @@ npm run build && npm run start   # 통합 서버 (port 4173)
 
 `.env.example`을 복사해 `.env`로 만든 뒤 값을 채워 넣는다. **`.env`는 git에 커밋하지 않는다 — 서버에만 존재.**
 
-| 키 | 설명 |
-| --- | --- |
-| `DATABASE_URL` | PostgreSQL 접속 문자열. compose 내부에서는 호스트가 `postgres`. 로컬 개발 시 `localhost`로 변경. |
-| `APP_PASSWORD` | 공유 로그인 비밀번호. |
-| `SESSION_SECRET` | 세션 쿠키 서명용 시크릿. 충분히 긴 임의 문자열. |
-| `ANTHROPIC_API_KEY` | (선택) Anthropic API 키. |
-| `ANTHROPIC_MODEL` | (선택) 사용할 Claude 모델. 기본 `claude-sonnet-4-20250514`. |
+| 키 | 필수 | 설명 |
+| --- | --- | --- |
+| `DATABASE_URL` | ✓ | PostgreSQL 접속 문자열. compose 내부에서는 호스트가 `postgres`. 로컬 개발 시 `localhost`로 변경. |
+| `SESSION_SECRET` | ✓ | 세션 쿠키 서명용 시크릿. 충분히 긴 임의 문자열. |
+| `SIGNUP_CODE` | ✓ | 회원가입 시 입력해야 하는 공유 시크릿. 미설정이면 가입 비활성화. |
+| `ADMIN_PASSWORD` | 최초 1회 | users 테이블이 비어있을 때만 사용됨 — `jerome` admin 계정의 초기 비밀번호. 부트스트랩 후 제거 권장. |
+| `ANTHROPIC_API_KEY` | | (선택) Anthropic API 키. |
+| `ANTHROPIC_MODEL` | | (선택) 사용할 Claude 모델. 기본 `claude-sonnet-4-20250514`. |
 
-`NODE_ENV`은 `docker-compose.yml`에서 `production`으로 설정한다 (운영 환경 Secure 쿠키 활성화 조건).
+HTTPS 도입 후에는 `docker-compose.yml`의 app 서비스 `environment`에 `NODE_ENV=production`을 추가해 Secure 쿠키를 활성화한다.
+
+## 인증 / 회원가입
+
+- 멀티 유저 시스템. 가입 코드를 아는 사람만 회원가입 가능.
+- 비밀번호는 bcrypt(cost 12)로 해시 저장.
+- 세션은 HMAC-SHA256 서명된 쿠키(`HttpOnly`, `SameSite=Lax`, 7일 만료)로 관리.
+- 로그인 5회/분, 회원가입 3회/시간 IP 단위 레이트 리미트.
+- 모든 데이터(칸반/구독/캘린더 메모)는 `user_id`로 격리. 다른 유저의 자원에는 접근 불가.
+
+**최초 배포 시 `jerome` 계정 부트스트랩**:
+1. 서버 `.env`에 `ADMIN_PASSWORD=...` 설정.
+2. `docker compose up -d --build` — 시작 시 `users` 테이블이 비어있고 `ADMIN_PASSWORD`가 있으면 jerome 계정 자동 생성 + 기존 데이터 모두 jerome 소유로 백필.
+3. 부트스트랩 후 `.env`에서 `ADMIN_PASSWORD`를 제거하고 컨테이너 재시작 권장.
+
+추가 유저는 회원가입 화면(`SIGNUP_CODE` 필요)에서 가입한다.
 
 ## 배포
 
@@ -108,8 +124,17 @@ ssh -p 2222 jerome@jerome-server.iptime.org \
   'cd ~/jerome_kanban && docker compose build --no-cache && docker compose up -d'
 ```
 
-**로그인이 안 됨 / 세션이 끊김**
+**HTTPS 환경에서 로그인이 안 됨 / 세션이 끊김**
 → `docker-compose.yml`의 app 서비스 `environment`에 `NODE_ENV=production`이 있는지 확인. 누락되면 운영 환경에서 Secure 쿠키 플래그가 빠져 HTTPS 세션이 동작하지 않는다.
+
+**jerome 계정으로 로그인 안 됨 (최초 배포 후)**
+→ `ADMIN_PASSWORD`가 `.env`에 설정된 채로 컨테이너가 시작되었는지 확인. `docker compose logs app | grep schema`에서 부트스트랩 로그(`초기 admin 계정 'jerome' 부트스트랩 완료`) 확인.
+
+**회원가입이 503으로 실패**
+→ `.env`의 `SIGNUP_CODE`가 비어있음. 임의 문자열로 설정 후 컨테이너 재시작.
+
+**로그인이 429로 차단됨**
+→ 같은 IP에서 1분에 10회 이상 시도. 잠시 대기.
 
 **롤백**
 ```bash
