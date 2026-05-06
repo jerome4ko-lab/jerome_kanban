@@ -266,11 +266,7 @@ function verifySession(req, env) {
 }
 
 function isSecureCookie(env) {
-  return Boolean(
-    env.RAILWAY_ENVIRONMENT ||
-      env.RAILWAY_PROJECT_ID ||
-      env.NODE_ENV === "production",
-  );
+  return env.NODE_ENV === "production";
 }
 
 function sessionCookie(value, env) {
