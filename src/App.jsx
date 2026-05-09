@@ -294,6 +294,11 @@ function SubscriptionBar({ subscriptions, onSave, onDelete }) {
           </div>
         )
       )}
+      {subscriptions.length === 0 && editingId !== "new" ? (
+        <span className="col-span-2 text-xs text-slate-400 dark:text-slate-500 md:col-span-1">
+          구독 만료일을 + 로 추가해보세요
+        </span>
+      ) : null}
       {editingId === "new" ? (
         <div className="col-span-2 flex items-center gap-1 rounded-md border border-slate-300 bg-white px-1.5 py-0.5 dark:border-slate-700 dark:bg-slate-900 md:col-span-1">
           <input
@@ -317,7 +322,11 @@ function SubscriptionBar({ subscriptions, onSave, onDelete }) {
       ) : (
         <button
           onClick={startNew}
-          className="inline-flex h-5 w-5 items-center justify-center justify-self-end rounded-full text-slate-300 transition hover:text-emerald-500 dark:text-slate-600 dark:hover:text-emerald-400 md:border md:border-dashed md:border-slate-300 md:text-slate-400 md:opacity-0 md:transition-opacity md:hover:border-emerald-400 md:group-hover/sub:opacity-100 md:focus-visible:opacity-100 md:dark:border-slate-600 md:dark:text-slate-500 md:dark:hover:border-emerald-500"
+          className={`inline-flex h-5 w-5 items-center justify-center justify-self-end rounded-full text-slate-300 transition hover:text-emerald-500 dark:text-slate-600 dark:hover:text-emerald-400 md:border md:border-dashed md:border-slate-300 md:text-slate-400 md:hover:border-emerald-400 md:focus-visible:opacity-100 md:dark:border-slate-600 md:dark:text-slate-500 md:dark:hover:border-emerald-500 ${
+            subscriptions.length === 0
+              ? ""
+              : "md:opacity-0 md:transition-opacity md:group-hover/sub:opacity-100"
+          }`}
           title="구독 추가"
         >
           +
@@ -1262,6 +1271,11 @@ function App() {
               ))}
             </SortableContext>
 
+            {tabs.length === 0 && !showAddTab ? (
+              <span className="ml-auto text-xs text-slate-400 dark:text-slate-500">
+                새 주제 버튼으로 첫 주제를 만들어주세요
+              </span>
+            ) : null}
             {showAddTab ? (
             <form onSubmit={addTab} className="ml-auto inline-flex items-center gap-1">
               <input
@@ -1307,7 +1321,11 @@ function App() {
             <button
               type="button"
               onClick={() => setShowAddTab(true)}
-              className="ml-auto inline-flex h-9 w-9 items-center justify-center rounded-md text-slate-300 transition hover:text-emerald-500 dark:text-slate-600 dark:hover:text-emerald-400 md:w-auto md:gap-1 md:border md:border-dashed md:border-slate-300 md:px-3 md:text-sm md:font-medium md:text-slate-500 md:opacity-0 md:transition-opacity md:hover:border-emerald-400 md:hover:bg-emerald-50 md:hover:text-emerald-700 md:group-hover/tabs:opacity-100 md:focus-visible:opacity-100 md:dark:border-slate-700 md:dark:text-slate-400 md:dark:hover:border-emerald-500 md:dark:hover:bg-emerald-500/10 md:dark:hover:text-emerald-200"
+              className={`ml-auto inline-flex h-9 w-9 items-center justify-center rounded-md text-slate-300 transition hover:text-emerald-500 dark:text-slate-600 dark:hover:text-emerald-400 md:w-auto md:gap-1 md:border md:border-dashed md:border-slate-300 md:px-3 md:text-sm md:font-medium md:text-slate-500 md:hover:border-emerald-400 md:hover:bg-emerald-50 md:hover:text-emerald-700 md:focus-visible:opacity-100 md:dark:border-slate-700 md:dark:text-slate-400 md:dark:hover:border-emerald-500 md:dark:hover:bg-emerald-500/10 md:dark:hover:text-emerald-200 ${
+                tabs.length === 0
+                  ? ""
+                  : "md:opacity-0 md:transition-opacity md:group-hover/tabs:opacity-100"
+              }`}
             >
               <Plus size={14} />
               <span className="hidden md:inline">새 주제</span>
