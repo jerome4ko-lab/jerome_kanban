@@ -939,6 +939,10 @@ function App() {
     await Promise.all(targets.map((item) => moveItem(item.id, "hidden")));
   }
 
+  async function moveItemToHidden(itemId) {
+    await moveItem(itemId, "hidden");
+  }
+
   async function moveItem(itemId, nextStatus) {
     const previous = items.find((entry) => entry.id === itemId);
     if (!previous || previous.status === nextStatus) return false;
@@ -1423,6 +1427,7 @@ function App() {
                     onFlushMemos={flushItemMemos}
                     groupSuggestions={activeGroupNames}
                     onMoveGroupToHidden={status.id === "done" ? moveGroupToHidden : undefined}
+                    onMoveItemToHidden={status.id === "done" ? moveItemToHidden : undefined}
                     isFirstUseHint={activeItems.length === 0 && status.id === "todo"}
                   />
                 ))}
@@ -2053,6 +2058,7 @@ function KanbanColumn({
   onFlushMemos,
   groupSuggestions,
   onMoveGroupToHidden,
+  onMoveItemToHidden,
   isFirstUseHint = false,
 }) {
   const Icon = status.icon;
@@ -2082,6 +2088,7 @@ function KanbanColumn({
         onRemoveMemo={onRemoveMemo}
         onFlushMemos={onFlushMemos}
         groupSuggestions={groupSuggestions}
+        onMoveToHidden={onMoveItemToHidden}
       />
     );
   }
@@ -2199,6 +2206,7 @@ function ItemCard({
   onRemoveMemo,
   onFlushMemos,
   groupSuggestions,
+  onMoveToHidden,
 }) {
   const [isEditing, setIsEditing] = useState(false);
   const [draft, setDraft] = useState(formatGroupedText(item));
@@ -2293,6 +2301,18 @@ function ItemCard({
             <span className="break-words whitespace-pre-wrap">{item.text}</span>
           </button>
         )}
+        {onMoveToHidden ? (
+          <button
+            type="button"
+            onPointerDown={stopDragPropagation}
+            onClick={() => onMoveToHidden(item.id)}
+            title="숨기기"
+            aria-label="숨기기"
+            className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded text-slate-400 opacity-0 transition group-hover:opacity-100 hover:bg-slate-100 hover:text-slate-600 dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-slate-300"
+          >
+            <EyeOff size={13} />
+          </button>
+        ) : null}
         <button
           type="button"
           onPointerDown={stopDragPropagation}
