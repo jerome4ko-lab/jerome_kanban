@@ -1326,8 +1326,13 @@ function App() {
         ) : tabs.length === 0 ? (
           <section className="flex min-h-[420px] flex-col items-center justify-center gap-3 rounded-lg border border-dashed border-slate-300 bg-white p-8 text-center text-slate-500 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-400">
             <Plus size={28} />
+            <p className="text-base font-semibold text-slate-700 dark:text-slate-200">
+              환영합니다 👋
+            </p>
             <p className="text-sm">
-              아직 주제가 없습니다. 위의 <b>새 주제</b> 버튼으로 칸반 보드를 시작해보세요.
+              주제(탭)를 먼저 만들어 칸반을 시작하세요.
+              <br />
+              오른쪽 위 <b>+</b> 버튼을 눌러 첫 주제를 만들어보세요.
             </p>
           </section>
         ) : !activeTabId ? (
@@ -1387,6 +1392,12 @@ function App() {
               </button>
             </form>
 
+            {activeItems.length === 0 ? (
+              <p className="-mt-1 px-1 text-xs text-slate-500 dark:text-slate-400">
+                💡 할 일을 입력하고 Enter — 앞에 <code className="rounded bg-slate-100 px-1 py-0.5 font-mono text-[11px] text-emerald-700 dark:bg-slate-800 dark:text-emerald-300">#그룹명</code> 을 붙이면 같은 그룹으로 묶입니다.
+              </p>
+            ) : null}
+
             <DndContext
               sensors={sensors}
               collisionDetection={pointerWithin}
@@ -1412,6 +1423,7 @@ function App() {
                     onFlushMemos={flushItemMemos}
                     groupSuggestions={activeGroupNames}
                     onMoveGroupToHidden={status.id === "done" ? moveGroupToHidden : undefined}
+                    isFirstUseHint={activeItems.length === 0 && status.id === "todo"}
                   />
                 ))}
               </section>
@@ -2041,6 +2053,7 @@ function KanbanColumn({
   onFlushMemos,
   groupSuggestions,
   onMoveGroupToHidden,
+  isFirstUseHint = false,
 }) {
   const Icon = status.icon;
   const { setNodeRef, isOver } = useDroppable({ id: status.id });
@@ -2107,7 +2120,18 @@ function KanbanColumn({
                 : "border-slate-200 bg-slate-50 text-slate-400 dark:border-slate-700 dark:bg-slate-900/70 dark:text-slate-500"
             }`}
           >
-            여기로 드래그
+            {isFirstUseHint ? (
+              <>
+                <div className="text-xs font-semibold text-slate-600 dark:text-slate-300">
+                  여기에 첫 카드가 생깁니다
+                </div>
+                <div className="mt-1 text-[11px] text-slate-400 dark:text-slate-500">
+                  🔄 카드를 드래그해 진행중·완료로 옮기세요
+                </div>
+              </>
+            ) : (
+              "여기로 드래그"
+            )}
           </div>
         ) : (
           <>
