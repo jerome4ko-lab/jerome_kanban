@@ -409,16 +409,16 @@ function MottoLine({ motto, onSave }) {
       type="button"
       onClick={() => setEditing(true)}
       title="클릭하여 편집"
-      className="group/motto mt-1 flex w-full items-baseline gap-1.5 rounded text-left transition-colors"
+      className="group/motto mt-1 block w-full rounded text-left leading-snug transition-colors"
     >
       <span
         aria-hidden
-        className="select-none font-serif text-xl leading-none text-slate-300 dark:text-slate-600"
+        className="select-none font-serif text-xl text-slate-300 dark:text-slate-600"
       >
         ❝
       </span>
       <span
-        className={`min-w-0 flex-1 break-words font-serif text-sm italic leading-snug ${
+        className={`font-serif text-sm italic ${
           motto
             ? "text-slate-600 dark:text-slate-300"
             : "text-slate-400 dark:text-slate-600"
@@ -428,12 +428,15 @@ function MottoLine({ motto, onSave }) {
       </span>
       <span
         aria-hidden
-        className="select-none font-serif text-xl leading-none text-slate-300 dark:text-slate-600"
+        className="select-none font-serif text-xl text-slate-300 dark:text-slate-600"
       >
         ❞
       </span>
       {saving ? (
-        <Loader2 className="ml-1 animate-spin text-slate-400" size={12} />
+        <Loader2
+          className="ml-1 inline-block animate-spin align-middle text-slate-400"
+          size={12}
+        />
       ) : null}
     </button>
   );
