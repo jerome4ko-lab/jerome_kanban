@@ -336,6 +336,92 @@ function SubscriptionBar({ subscriptions, onSave, onDelete }) {
   );
 }
 
+function MottoLine({ motto, onSave }) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(motto);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (!editing) setDraft(motto);
+  }, [motto, editing]);
+
+  async function commit() {
+    const next = draft.trim().slice(0, 100);
+    setEditing(false);
+    if (next === motto) return;
+    try {
+      setSaving(true);
+      await onSave(next);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function cancel() {
+    setEditing(false);
+    setDraft(motto);
+  }
+
+  if (editing) {
+    return (
+      <div className="mt-1 flex items-center gap-2">
+        <input
+          autoFocus
+          value={draft}
+          onChange={(event) => setDraft(event.target.value)}
+          onBlur={commit}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") {
+              event.preventDefault();
+              event.currentTarget.blur();
+            } else if (event.key === "Escape") {
+              cancel();
+            }
+          }}
+          maxLength={100}
+          placeholder="다짐 한 줄을 적어보세요"
+          spellCheck={false}
+          className="w-full max-w-md rounded border border-emerald-300 bg-white px-2 py-1 font-serif text-base italic text-slate-700 outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100 dark:border-emerald-500/40 dark:bg-slate-900 dark:text-slate-200 dark:focus:ring-emerald-500/20"
+        />
+      </div>
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={() => setEditing(true)}
+      title="클릭하여 편집"
+      className="group/motto mt-1 flex max-w-md items-baseline gap-1.5 rounded text-left transition-colors"
+    >
+      <span
+        aria-hidden
+        className="select-none font-serif text-2xl leading-none text-slate-300 dark:text-slate-600"
+      >
+        ❝
+      </span>
+      <span
+        className={`font-serif text-base italic leading-snug ${
+          motto
+            ? "text-slate-600 dark:text-slate-300"
+            : "text-slate-400 dark:text-slate-600"
+        } group-hover/motto:text-emerald-600 dark:group-hover/motto:text-emerald-300`}
+      >
+        {motto || "다짐 한 줄을 적어보세요"}
+      </span>
+      <span
+        aria-hidden
+        className="select-none font-serif text-2xl leading-none text-slate-300 dark:text-slate-600"
+      >
+        ❞
+      </span>
+      {saving ? (
+        <Loader2 className="ml-1 animate-spin text-slate-400" size={12} />
+      ) : null}
+    </button>
+  );
+}
+
 function App() {
   const [theme, setTheme] = useTheme();
   const [showHidden, setShowHidden] = useShowHidden();
@@ -727,6 +813,21 @@ function App() {
       });
       await refreshSubscriptions();
     } catch (requestError) {
+      handleRequestError(requestError);
+    }
+  }
+
+  async function handleSaveMotto(nextMotto) {
+    try {
+      const data = await apiRequest("/api/users/me", {
+        method: "PATCH",
+        body: JSON.stringify({ motto: nextMotto }),
+      });
+      setCurrentUser((prev) =>
+        prev ? { ...prev, motto: data?.user?.motto ?? nextMotto } : prev,
+      );
+    } catch (requestError) {
+      showToast("모토 저장에 실패했습니다");
       handleRequestError(requestError);
     }
   }
@@ -1175,6 +1276,12 @@ function App() {
             <p className="font-serif text-4xl font-bold tracking-tight text-slate-900 dark:text-slate-50">
               Pace
             </p>
+            {currentUser ? (
+              <MottoLine
+                motto={currentUser.motto || ""}
+                onSave={handleSaveMotto}
+              />
+            ) : null}
           </div>
 
           <div className="flex items-center justify-self-end gap-3">

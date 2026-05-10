@@ -216,6 +216,7 @@ async function ensureSchema(env) {
         ALTER TABLE kanban_items     ADD COLUMN IF NOT EXISTS user_id UUID;
         ALTER TABLE subscriptions    ADD COLUMN IF NOT EXISTS user_id UUID;
         ALTER TABLE calendar_notes   ADD COLUMN IF NOT EXISTS user_id UUID;
+        ALTER TABLE users            ADD COLUMN IF NOT EXISTS motto TEXT NOT NULL DEFAULT '';
       `);
 
       await bootstrapAdminUser(db, env);
@@ -505,7 +506,7 @@ function validateEmail(value) {
 
 async function findUserByUsername(env, username) {
   const result = await getPool(env).query(
-    `SELECT id, username, email, password_hash
+    `SELECT id, username, email, password_hash, motto
        FROM users
        WHERE LOWER(username) = LOWER($1)
        LIMIT 1`,
@@ -516,7 +517,7 @@ async function findUserByUsername(env, username) {
 
 async function findUserById(env, userId) {
   const result = await getPool(env).query(
-    `SELECT id, username, email FROM users WHERE id = $1 LIMIT 1`,
+    `SELECT id, username, email, motto FROM users WHERE id = $1 LIMIT 1`,
     [userId],
   );
   return result.rows[0] || null;
@@ -527,7 +528,20 @@ function rowToUser(row) {
     id: row.id,
     username: row.username,
     email: row.email || null,
+    motto: row.motto || "",
   };
+}
+
+async function updateUserMotto(env, userId, body) {
+  const raw = typeof body?.motto === "string" ? body.motto : "";
+  const motto = raw.trim().slice(0, 100);
+  const result = await getPool(env).query(
+    `UPDATE users SET motto = $1 WHERE id = $2
+       RETURNING id, username, email, motto`,
+    [motto, userId],
+  );
+  if (!result.rows[0]) throw new HttpError(404, "사용자를 찾을 수 없습니다.");
+  return rowToUser(result.rows[0]);
 }
 
 function getClientIp(req) {
@@ -1109,7 +1123,7 @@ async function handleSignup(req, res, env) {
     const result = await getPool(env).query(
       `INSERT INTO users (id, username, email, password_hash)
          VALUES ($1, $2, $3, $4)
-         RETURNING id, username, email`,
+         RETURNING id, username, email, motto`,
       [id, username, email, passwordHash],
     );
     user = result.rows[0];
@@ -1173,6 +1187,15 @@ export function createApiHandler(options = {}) {
           throw new HttpError(405, "GET 요청만 지원합니다.");
         }
         sendJson(res, 200, await getDashboard(env, userId));
+        return true;
+      }
+
+      if (pathname === "/api/users/me") {
+        if (req.method !== "PATCH") {
+          throw new HttpError(405, "PATCH 요청만 지원합니다.");
+        }
+        const body = await readJson(req);
+        sendJson(res, 200, { user: await updateUserMotto(env, userId, body) });
         return true;
       }
 
