@@ -1556,6 +1556,59 @@ function CalendarPanel({ notes = [], onAdd, onUpdate, onDelete }) {
   const DAY_LABELS = ["일", "월", "화", "수", "목", "금", "토"];
 
   const [openDateKey, setOpenDateKey] = useState(null);
+  const [longPressActive, setLongPressActive] = useState(null);
+  const longPressTimerRef = useRef(null);
+  const pointerStartRef = useRef(null);
+  const wasTouchRef = useRef(false);
+
+  function clearLongPressTimer() {
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+  }
+
+  function handleDayPointerDown(event, dateKey) {
+    if (event.pointerType === "mouse") {
+      wasTouchRef.current = false;
+      return;
+    }
+    wasTouchRef.current = true;
+    pointerStartRef.current = { x: event.clientX, y: event.clientY };
+    setLongPressActive(dateKey);
+    clearLongPressTimer();
+    longPressTimerRef.current = setTimeout(() => {
+      longPressTimerRef.current = null;
+      setLongPressActive(null);
+      setOpenDateKey((prev) => (prev === dateKey ? null : dateKey));
+    }, 500);
+  }
+
+  function handleDayPointerMove(event) {
+    if (!pointerStartRef.current) return;
+    const dx = event.clientX - pointerStartRef.current.x;
+    const dy = event.clientY - pointerStartRef.current.y;
+    if (dx * dx + dy * dy > 36) {
+      clearLongPressTimer();
+      setLongPressActive(null);
+    }
+  }
+
+  function handleDayPointerEnd() {
+    clearLongPressTimer();
+    setLongPressActive(null);
+    pointerStartRef.current = null;
+  }
+
+  function handleDayClick(dateKey) {
+    if (wasTouchRef.current) {
+      wasTouchRef.current = false;
+      return;
+    }
+    setOpenDateKey((prev) => (prev === dateKey ? null : dateKey));
+  }
+
+  useEffect(() => () => clearLongPressTimer(), []);
 
   const notesByDate = useMemo(() => {
     const map = new Map();
@@ -1644,13 +1697,19 @@ function CalendarPanel({ notes = [], onAdd, onUpdate, onDelete }) {
                   <div key={`d-${i}`} className="relative">
                     <button
                       type="button"
-                      onClick={() =>
-                        setOpenDateKey((prev) =>
-                          prev === dateKey ? null : dateKey,
-                        )
-                      }
+                      onPointerDown={(e) => handleDayPointerDown(e, dateKey)}
+                      onPointerMove={handleDayPointerMove}
+                      onPointerUp={handleDayPointerEnd}
+                      onPointerCancel={handleDayPointerEnd}
+                      onPointerLeave={handleDayPointerEnd}
+                      onClick={() => handleDayClick(dateKey)}
                       title={holiday || undefined}
-                      className={`flex min-h-[2.5rem] w-full flex-col items-stretch rounded-md px-0.5 py-0.5 text-xs font-medium transition-colors ${cellBg}`}
+                      style={{ touchAction: "manipulation" }}
+                      className={`flex min-h-[2.5rem] w-full flex-col items-stretch rounded-md px-0.5 py-0.5 text-xs font-medium transition-colors duration-500 ${cellBg} ${
+                        longPressActive === dateKey
+                          ? "bg-emerald-200/70 dark:bg-emerald-500/30 scale-[0.98]"
+                          : ""
+                      }`}
                     >
                       <span
                         className={`text-center leading-tight ${numberColor} ${
