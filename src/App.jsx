@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
+  BellRing,
   CalendarDays,
   CheckCircle2,
   ChevronDown,
@@ -7,11 +8,13 @@ import {
   ClipboardList,
   Eye,
   EyeOff,
+  ListTodo,
   Loader2,
   LockKeyhole,
   LogOut,
   Moon,
   Plus,
+  Quote,
   Settings,
   Sun,
   Trash2,
@@ -146,6 +149,20 @@ function useShowHidden() {
   }, [showHidden]);
 
   return [showHidden, setShowHidden];
+}
+
+function useLocalToggle(key, defaultValue) {
+  const [value, setValue] = useState(() => {
+    const saved = window.localStorage.getItem(key);
+    if (saved === null) return defaultValue;
+    return saved === "true";
+  });
+
+  useEffect(() => {
+    window.localStorage.setItem(key, String(value));
+  }, [key, value]);
+
+  return [value, setValue];
 }
 
 async function loadSubscriptions() {
@@ -381,7 +398,7 @@ function MottoLine({ motto, onSave }) {
           maxLength={100}
           placeholder="다짐 한 줄을 적어보세요"
           spellCheck={false}
-          className="w-full max-w-md rounded border border-emerald-300 bg-white px-2 py-1 font-serif text-base italic text-slate-700 outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100 dark:border-emerald-500/40 dark:bg-slate-900 dark:text-slate-200 dark:focus:ring-emerald-500/20"
+          className="w-full rounded border border-emerald-300 bg-white px-2 py-1 font-serif text-sm italic text-slate-700 outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100 dark:border-emerald-500/40 dark:bg-slate-900 dark:text-slate-200 dark:focus:ring-emerald-500/20"
         />
       </div>
     );
@@ -392,16 +409,16 @@ function MottoLine({ motto, onSave }) {
       type="button"
       onClick={() => setEditing(true)}
       title="클릭하여 편집"
-      className="group/motto mt-1 flex max-w-md items-baseline gap-1.5 rounded text-left transition-colors"
+      className="group/motto mt-1 flex w-full items-baseline gap-1.5 rounded text-left transition-colors"
     >
       <span
         aria-hidden
-        className="select-none font-serif text-2xl leading-none text-slate-300 dark:text-slate-600"
+        className="select-none font-serif text-xl leading-none text-slate-300 dark:text-slate-600"
       >
         ❝
       </span>
       <span
-        className={`font-serif text-base italic leading-snug ${
+        className={`min-w-0 flex-1 break-words font-serif text-sm italic leading-snug ${
           motto
             ? "text-slate-600 dark:text-slate-300"
             : "text-slate-400 dark:text-slate-600"
@@ -411,7 +428,7 @@ function MottoLine({ motto, onSave }) {
       </span>
       <span
         aria-hidden
-        className="select-none font-serif text-2xl leading-none text-slate-300 dark:text-slate-600"
+        className="select-none font-serif text-xl leading-none text-slate-300 dark:text-slate-600"
       >
         ❞
       </span>
@@ -425,6 +442,12 @@ function MottoLine({ motto, onSave }) {
 function App() {
   const [theme, setTheme] = useTheme();
   const [showHidden, setShowHidden] = useShowHidden();
+  const [showMotto, setShowMotto] = useLocalToggle("showMotto", true);
+  const [showSubBar, setShowSubBar] = useLocalToggle("showSubBar", true);
+  const [showInProgressSummary, setShowInProgressSummary] = useLocalToggle(
+    "showInProgressSummary",
+    true,
+  );
   const [subscriptions, setSubscriptions] = useState([]);
   const [calendarNotes, setCalendarNotes] = useState([]);
   const [authStatus, setAuthStatus] = useState("checking");
@@ -1272,16 +1295,10 @@ function App() {
     <main className="min-h-screen px-4 py-5 text-slate-950 transition-colors duration-300 dark:text-slate-50 sm:px-6 lg:px-8">
       <div className="mx-auto flex w-full max-w-[1600px] flex-col gap-5">
         <header className="grid grid-cols-[1fr_auto] items-baseline gap-x-3 gap-y-3 border-b border-slate-200 pb-5 pt-3 dark:border-slate-800 md:gap-x-4">
-          <div className="md:row-span-2">
+          <div>
             <p className="font-serif text-4xl font-bold tracking-tight text-slate-900 dark:text-slate-50">
               Pace
             </p>
-            {currentUser ? (
-              <MottoLine
-                motto={currentUser.motto || ""}
-                onSave={handleSaveMotto}
-              />
-            ) : null}
           </div>
 
           <div className="flex items-center justify-self-end gap-3">
@@ -1293,21 +1310,40 @@ function App() {
               onSetTheme={setTheme}
               showHidden={showHidden}
               onToggleHidden={() => setShowHidden((value) => !value)}
+              showMotto={showMotto}
+              onToggleMotto={() => setShowMotto((value) => !value)}
+              showSubBar={showSubBar}
+              onToggleSubBar={() => setShowSubBar((value) => !value)}
+              showInProgressSummary={showInProgressSummary}
+              onToggleInProgressSummary={() =>
+                setShowInProgressSummary((value) => !value)
+              }
               onLogout={handleLogout}
               currentUser={currentUser}
             />
           </div>
 
-          <div className="col-span-2 md:col-span-1 md:col-start-2 md:row-start-2 md:justify-self-end">
-            <SubscriptionBar
-              subscriptions={subscriptions}
-              onSave={handleSaveSub}
-              onDelete={handleDeleteSub}
-            />
-          </div>
+          {showMotto && currentUser ? (
+            <div className="col-span-2 md:col-span-1 md:col-start-1 md:row-start-2">
+              <MottoLine
+                motto={currentUser.motto || ""}
+                onSave={handleSaveMotto}
+              />
+            </div>
+          ) : null}
+
+          {showSubBar ? (
+            <div className="col-span-2 md:col-span-1 md:col-start-2 md:row-start-2 md:justify-self-end">
+              <SubscriptionBar
+                subscriptions={subscriptions}
+                onSave={handleSaveSub}
+                onDelete={handleDeleteSub}
+              />
+            </div>
+          ) : null}
         </header>
 
-        {inProgressItems.length > 0 ? (
+        {showInProgressSummary && inProgressItems.length > 0 ? (
           <section
             aria-label="진행중 항목 요약"
             className="-mt-1 columns-1 gap-x-8 text-xs leading-5 text-slate-500 dark:text-slate-400 sm:columns-2 lg:columns-3"
@@ -2796,6 +2832,12 @@ function SettingsMenu({
   onSetTheme,
   showHidden,
   onToggleHidden,
+  showMotto,
+  onToggleMotto,
+  showSubBar,
+  onToggleSubBar,
+  showInProgressSummary,
+  onToggleInProgressSummary,
   onLogout,
   currentUser,
 }) {
@@ -2871,6 +2913,48 @@ function SettingsMenu({
               <Moon size={14} /> 다크
             </button>
           </div>
+          <div className="px-2 pb-1 pt-1 text-[11px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">
+            표시
+          </div>
+          <button
+            type="button"
+            onClick={onToggleMotto}
+            className="flex w-full items-center justify-between gap-2 rounded-md px-2 py-2 text-sm text-slate-700 transition hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800"
+          >
+            <span className="inline-flex items-center gap-2">
+              <Quote size={14} />
+              다짐 한 줄
+            </span>
+            <span className="text-xs text-slate-400 dark:text-slate-500">
+              {showMotto ? "표시 중" : "숨김"}
+            </span>
+          </button>
+          <button
+            type="button"
+            onClick={onToggleSubBar}
+            className="flex w-full items-center justify-between gap-2 rounded-md px-2 py-2 text-sm text-slate-700 transition hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800"
+          >
+            <span className="inline-flex items-center gap-2">
+              <BellRing size={14} />
+              구독 D-day
+            </span>
+            <span className="text-xs text-slate-400 dark:text-slate-500">
+              {showSubBar ? "표시 중" : "숨김"}
+            </span>
+          </button>
+          <button
+            type="button"
+            onClick={onToggleInProgressSummary}
+            className="flex w-full items-center justify-between gap-2 rounded-md px-2 py-2 text-sm text-slate-700 transition hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800"
+          >
+            <span className="inline-flex items-center gap-2">
+              <ListTodo size={14} />
+              진행중 요약
+            </span>
+            <span className="text-xs text-slate-400 dark:text-slate-500">
+              {showInProgressSummary ? "표시 중" : "숨김"}
+            </span>
+          </button>
           <button
             type="button"
             onClick={onToggleHidden}
