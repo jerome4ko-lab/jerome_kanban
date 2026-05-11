@@ -417,7 +417,6 @@ function MottoLine({ motto, onSave }) {
       >
         ❝
       </span>
-      {" "}
       <span
         className={`font-serif text-sm font-medium italic md:text-base ${
           motto
