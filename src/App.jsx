@@ -1297,7 +1297,7 @@ function App() {
   }
 
   return (
-    <main className="min-h-screen px-4 py-5 text-slate-950 transition-colors duration-300 dark:text-slate-50 sm:px-6 lg:px-8">
+    <main className="min-h-screen px-4 py-5 text-[#202020] transition-colors duration-300 dark:text-slate-50 sm:px-6 lg:px-8">
       <div className="mx-auto flex w-full max-w-[1600px] flex-col gap-5">
         <header className="grid grid-cols-[1fr_auto] items-baseline gap-x-3 gap-y-3 border-b border-slate-200 pb-5 pt-3 dark:border-slate-800 md:gap-x-4">
           <div>
@@ -1440,7 +1440,7 @@ function App() {
                 spellCheck={false}
                 autoCorrect="off"
                 autoCapitalize="off"
-                className="h-9 min-w-32 rounded-md border border-slate-200 bg-white px-2 text-sm text-slate-950 outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50 dark:focus:border-emerald-400 dark:focus:ring-emerald-500/20"
+                className="h-9 min-w-32 rounded-md border border-slate-200 bg-white px-2 text-sm text-[#202020] outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50 dark:focus:border-emerald-400 dark:focus:ring-emerald-500/20"
               />
               <button
                 type="submit"
@@ -1545,7 +1545,7 @@ function App() {
                 spellCheck={false}
                 autoCorrect="off"
                 autoCapitalize="off"
-                className="min-w-0 flex-1 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950 outline-none transition placeholder:text-slate-400 focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50 dark:placeholder:text-slate-500 dark:focus:border-emerald-400 dark:focus:ring-emerald-500/20"
+                className="min-w-0 flex-1 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-[#202020] outline-none transition placeholder:text-slate-400 focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50 dark:placeholder:text-slate-500 dark:focus:border-emerald-400 dark:focus:ring-emerald-500/20"
               />
               <button
                 type="submit"
@@ -2334,7 +2334,7 @@ function KanbanColumn({
           >
             <Icon size={16} />
           </span>
-          <h2 className="truncate text-sm font-bold text-slate-950 dark:text-slate-50">
+          <h2 className="truncate text-sm font-bold text-[#202020] dark:text-slate-50">
             {status.label}
           </h2>
         </div>
@@ -2515,7 +2515,7 @@ function ItemCard({
             spellCheck={false}
             autoCorrect="off"
             autoCapitalize="off"
-            className="min-w-0 flex-1 resize-none rounded border border-slate-200 bg-white px-2 py-1 text-sm text-slate-950 outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-50 dark:focus:border-emerald-400 dark:focus:ring-emerald-500/20"
+            className="min-w-0 flex-1 resize-none rounded border border-slate-200 bg-white px-2 py-1 text-sm text-[#202020] outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-50 dark:focus:border-emerald-400 dark:focus:ring-emerald-500/20"
           />
         ) : (
           <button
@@ -2783,7 +2783,7 @@ function SortableTab({
           spellCheck={false}
           autoCorrect="off"
           autoCapitalize="off"
-          className={`mx-1 my-1 h-7 w-28 rounded-md border bg-white px-2 text-sm font-semibold text-slate-950 outline-none focus:ring-2 dark:bg-slate-900 dark:text-slate-50 ${
+          className={`mx-1 my-1 h-7 w-28 rounded-md border bg-white px-2 text-sm font-semibold text-[#202020] outline-none focus:ring-2 dark:bg-slate-900 dark:text-slate-50 ${
             isActive
               ? "border-emerald-400 focus:ring-emerald-200 dark:border-emerald-300 dark:focus:ring-emerald-500/30"
               : "border-slate-300 focus:ring-emerald-100 dark:border-slate-700 dark:focus:ring-emerald-500/20"
@@ -2992,7 +2992,7 @@ function SettingsMenu({
 
 function LoadingShell({ theme, onToggleTheme, children }) {
   return (
-    <main className="flex min-h-screen items-center justify-center px-4 py-8 text-slate-950 transition-colors duration-300 dark:text-slate-50">
+    <main className="flex min-h-screen items-center justify-center px-4 py-8 text-[#202020] transition-colors duration-300 dark:text-slate-50">
       <div className="w-full max-w-md">
         <div className="mb-4 flex items-center justify-between">
           <p className="font-serif text-4xl font-bold tracking-tight text-slate-900 dark:text-slate-50">
@@ -3037,7 +3037,7 @@ function Toast({ toast }) {
 }
 
 const authInputClass =
-  "w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950 outline-none transition placeholder:text-slate-400 focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50 dark:placeholder:text-slate-500 dark:focus:border-emerald-400 dark:focus:ring-emerald-500/20";
+  "w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-[#202020] outline-none transition placeholder:text-slate-400 focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50 dark:placeholder:text-slate-500 dark:focus:border-emerald-400 dark:focus:ring-emerald-500/20";
 
 const authPrimaryButtonClass =
   "mt-4 inline-flex h-10 w-full items-center justify-center rounded-lg bg-slate-950 px-4 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-emerald-400 dark:text-slate-950 dark:hover:bg-emerald-300";
@@ -3078,7 +3078,7 @@ function LoginScreen({
   onSwitchToSignup,
 }) {
   return (
-    <main className="flex min-h-screen items-center justify-center px-4 py-8 text-slate-950 transition-colors duration-300 dark:text-slate-50">
+    <main className="flex min-h-screen items-center justify-center px-4 py-8 text-[#202020] transition-colors duration-300 dark:text-slate-50">
       <div className="w-full max-w-md">
         <AuthHeader theme={theme} onToggleTheme={onToggleTheme} />
 
@@ -3162,7 +3162,7 @@ function SignupScreen({
     !isLoading;
 
   return (
-    <main className="flex min-h-screen items-center justify-center px-4 py-8 text-slate-950 transition-colors duration-300 dark:text-slate-50">
+    <main className="flex min-h-screen items-center justify-center px-4 py-8 text-[#202020] transition-colors duration-300 dark:text-slate-50">
       <div className="w-full max-w-md">
         <AuthHeader theme={theme} onToggleTheme={onToggleTheme} />
 

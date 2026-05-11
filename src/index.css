@@ -19,9 +19,8 @@
     min-width: 320px;
     min-height: 100vh;
     margin: 0;
-    background:
-      linear-gradient(180deg, rgb(248 250 252) 0%, rgb(241 245 249) 100%);
-    color: rgb(15 23 42);
+    background: #f7f7f4;
+    color: #202020;
     font-family: theme("fontFamily.sans");
   }
 
