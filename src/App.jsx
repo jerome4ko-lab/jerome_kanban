@@ -339,7 +339,7 @@ function SubscriptionBar({ subscriptions, onSave, onDelete }) {
       ) : (
         <button
           onClick={startNew}
-          className={`inline-flex h-5 w-5 items-center justify-center justify-self-end rounded-full text-slate-300 transition hover:text-emerald-500 dark:text-slate-600 dark:hover:text-emerald-400 md:border md:border-dashed md:border-slate-300 md:text-slate-400 md:hover:border-emerald-400 md:focus-visible:opacity-100 md:dark:border-slate-600 md:dark:text-slate-500 md:dark:hover:border-emerald-500 ${
+          className={`inline-flex h-4 w-4 items-center justify-center justify-self-end rounded-full text-xs leading-none text-slate-200 transition hover:text-emerald-500 md:h-5 md:w-5 md:text-sm md:text-slate-400 dark:text-slate-700 dark:hover:text-emerald-400 md:border md:border-dashed md:border-slate-300 md:hover:border-emerald-400 md:focus-visible:opacity-100 md:dark:border-slate-600 md:dark:text-slate-500 md:dark:hover:border-emerald-500 ${
             subscriptions.length === 0
               ? ""
               : "md:opacity-0 md:transition-opacity md:group-hover/sub:opacity-100"
