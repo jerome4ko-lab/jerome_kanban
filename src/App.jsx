@@ -398,7 +398,7 @@ function MottoLine({ motto, onSave }) {
           maxLength={100}
           placeholder="다짐 한 줄을 적어보세요"
           spellCheck={false}
-          className="w-full rounded border border-emerald-300 bg-white px-2 py-1 font-serif text-sm italic text-slate-700 outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100 dark:border-emerald-500/40 dark:bg-slate-900 dark:text-slate-200 dark:focus:ring-emerald-500/20"
+          className="w-full rounded border border-emerald-300 bg-white px-2 py-1 font-serif text-sm font-medium italic text-slate-700 outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100 md:text-base dark:border-emerald-500/40 dark:bg-slate-900 dark:text-slate-200 dark:focus:ring-emerald-500/20"
         />
       </div>
     );
@@ -413,15 +413,15 @@ function MottoLine({ motto, onSave }) {
     >
       <span
         aria-hidden
-        className="select-none font-serif text-base text-slate-300 dark:text-slate-600"
+        className="select-none font-serif text-base text-slate-300 md:text-lg dark:text-slate-600"
       >
         ❝
       </span>
       {" "}
       <span
-        className={`font-serif text-sm italic ${
+        className={`font-serif text-sm font-medium italic md:text-base ${
           motto
-            ? "text-slate-600 dark:text-slate-300"
+            ? "text-slate-700 dark:text-slate-300"
             : "text-slate-400 dark:text-slate-600"
         } group-hover/motto:text-emerald-600 dark:group-hover/motto:text-emerald-300`}
       >
@@ -430,7 +430,7 @@ function MottoLine({ motto, onSave }) {
       {" "}
       <span
         aria-hidden
-        className="select-none font-serif text-base text-slate-300 dark:text-slate-600"
+        className="select-none font-serif text-base text-slate-300 md:text-lg dark:text-slate-600"
       >
         ❞
       </span>
