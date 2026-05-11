@@ -5,7 +5,7 @@ set -euo pipefail
 HOST="jerome-server.iptime.org"
 PORT="2222"
 USER="jerome"
-REMOTE_PATH="~/jerome_kanban"
+REMOTE_PATH="~/docker/jerome_kanban"
 # -----------------------------------------------------------------------------
 
 step() { printf '\n\033[1;36m==> %s\033[0m\n' "$*"; }
