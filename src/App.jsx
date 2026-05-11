@@ -413,10 +413,11 @@ function MottoLine({ motto, onSave }) {
     >
       <span
         aria-hidden
-        className="select-none font-serif text-xl text-slate-300 dark:text-slate-600"
+        className="select-none font-serif text-base text-slate-300 dark:text-slate-600"
       >
         ❝
       </span>
+      {" "}
       <span
         className={`font-serif text-sm italic ${
           motto
@@ -426,9 +427,10 @@ function MottoLine({ motto, onSave }) {
       >
         {motto || "다짐 한 줄을 적어보세요"}
       </span>
+      {" "}
       <span
         aria-hidden
-        className="select-none font-serif text-xl text-slate-300 dark:text-slate-600"
+        className="select-none font-serif text-base text-slate-300 dark:text-slate-600"
       >
         ❞
       </span>
