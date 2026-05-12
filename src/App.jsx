@@ -2435,6 +2435,10 @@ function ItemCard({
   const [isEditing, setIsEditing] = useState(false);
   const [draft, setDraft] = useState(formatGroupedText(item));
   const [activeMemoId, setActiveMemoId] = useState(null);
+  const [longPressActive, setLongPressActive] = useState(false);
+  const longPressTimerRef = useRef(null);
+  const pointerStartRef = useRef(null);
+  const wasTouchRef = useRef(false);
   const status = STATUS_BY_ID[item.status];
   const memos = Array.isArray(item.memos) ? item.memos : [];
   const isInteracting = isEditing || activeMemoId !== null;
@@ -2449,6 +2453,55 @@ function ItemCard({
   useEffect(() => {
     if (!isEditing) setDraft(formatGroupedText(item));
   }, [item.text, item.groupName, isEditing]);
+
+  function clearLongPressTimer() {
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+  }
+
+  function handleTextPointerDown(event) {
+    if (event.pointerType === "mouse") {
+      wasTouchRef.current = false;
+      return;
+    }
+    wasTouchRef.current = true;
+    pointerStartRef.current = { x: event.clientX, y: event.clientY };
+    setLongPressActive(true);
+    clearLongPressTimer();
+    longPressTimerRef.current = setTimeout(() => {
+      longPressTimerRef.current = null;
+      setLongPressActive(false);
+      setIsEditing(true);
+    }, 500);
+  }
+
+  function handleTextPointerMove(event) {
+    if (!pointerStartRef.current) return;
+    const dx = event.clientX - pointerStartRef.current.x;
+    const dy = event.clientY - pointerStartRef.current.y;
+    if (dx * dx + dy * dy > 36) {
+      clearLongPressTimer();
+      setLongPressActive(false);
+    }
+  }
+
+  function handleTextPointerEnd() {
+    clearLongPressTimer();
+    setLongPressActive(false);
+    pointerStartRef.current = null;
+  }
+
+  function handleTextClick() {
+    if (wasTouchRef.current) {
+      wasTouchRef.current = false;
+      return;
+    }
+    setIsEditing(true);
+  }
+
+  useEffect(() => () => clearLongPressTimer(), []);
 
   function commitText() {
     setIsEditing(false);
@@ -2519,8 +2572,18 @@ function ItemCard({
         ) : (
           <button
             type="button"
-            onClick={() => setIsEditing(true)}
-            className="min-w-0 flex-1 cursor-text text-left text-sm font-medium leading-6 text-slate-900 dark:text-slate-50"
+            onPointerDown={handleTextPointerDown}
+            onPointerMove={handleTextPointerMove}
+            onPointerUp={handleTextPointerEnd}
+            onPointerCancel={handleTextPointerEnd}
+            onPointerLeave={handleTextPointerEnd}
+            onClick={handleTextClick}
+            style={{ touchAction: "manipulation" }}
+            className={`min-w-0 flex-1 cursor-text rounded text-left text-sm font-medium leading-6 text-slate-900 transition-shadow dark:text-slate-50 ${
+              longPressActive
+                ? "ring-2 ring-emerald-300/60 dark:ring-emerald-500/40"
+                : ""
+            }`}
           >
             <span className="break-words whitespace-pre-wrap">{item.text}</span>
           </button>
