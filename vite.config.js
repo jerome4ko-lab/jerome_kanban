@@ -35,6 +35,7 @@ export default defineConfig(({ mode }) => {
       apiPlugin(env),
       VitePWA({
         registerType: "autoUpdate",
+        workbox: { skipWaiting: true, clientsClaim: true },
         includeAssets: ["favicon.ico", "apple-touch-icon-180x180.png"],
         manifest: {
           name: "Pace",
