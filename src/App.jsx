@@ -1397,7 +1397,9 @@ function App() {
           <nav
             aria-label="주제"
             ref={tabNavRef}
-            className="group/tabs flex flex-wrap items-center gap-2 rounded-lg border border-slate-200 bg-white p-2 shadow-sm dark:border-slate-800 dark:bg-slate-950"
+            className={`group/tabs relative flex flex-wrap items-center gap-2 rounded-lg border border-slate-200 bg-white p-2 shadow-sm md:pr-2 dark:border-slate-800 dark:bg-slate-950 ${
+              showAddTab ? "pr-2" : "pr-11"
+            }`}
           >
             <SortableContext
               items={tabs.map((tab) => tab.id)}
@@ -1420,12 +1422,12 @@ function App() {
             </SortableContext>
 
             {tabs.length === 0 && !showAddTab ? (
-              <span className="ml-auto text-xs text-slate-400 dark:text-slate-500">
+              <span className="text-xs text-slate-400 md:ml-auto dark:text-slate-500">
                 새 주제 버튼으로 첫 주제를 만들어주세요
               </span>
             ) : null}
             {showAddTab ? (
-            <form onSubmit={addTab} className="ml-auto inline-flex items-center gap-1">
+            <form onSubmit={addTab} className="order-last mt-1 flex w-full items-center gap-1 md:order-none md:ml-auto md:mt-0 md:w-auto">
               <input
                 value={newTabName}
                 onChange={(event) => setNewTabName(event.target.value)}
@@ -1440,7 +1442,7 @@ function App() {
                 spellCheck={false}
                 autoCorrect="off"
                 autoCapitalize="off"
-                className="h-9 min-w-32 rounded-md border border-slate-200 bg-white px-2 text-sm text-[#202020] outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50 dark:focus:border-emerald-400 dark:focus:ring-emerald-500/20"
+                className="h-9 min-w-0 flex-1 rounded-md border border-slate-200 bg-white px-2 text-sm text-[#202020] outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100 md:min-w-32 md:flex-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50 dark:focus:border-emerald-400 dark:focus:ring-emerald-500/20"
               />
               <button
                 type="submit"
@@ -1469,7 +1471,7 @@ function App() {
             <button
               type="button"
               onClick={() => setShowAddTab(true)}
-              className={`ml-auto inline-flex h-9 w-9 items-center justify-center rounded-md text-slate-300 transition hover:text-emerald-500 dark:text-slate-600 dark:hover:text-emerald-400 md:w-auto md:gap-1 md:border md:border-dashed md:border-slate-300 md:px-3 md:text-sm md:font-medium md:text-slate-500 md:hover:border-emerald-400 md:hover:bg-emerald-50 md:hover:text-emerald-700 md:focus-visible:opacity-100 md:dark:border-slate-700 md:dark:text-slate-400 md:dark:hover:border-emerald-500 md:dark:hover:bg-emerald-500/10 md:dark:hover:text-emerald-200 ${
+              className={`absolute right-2 top-2 inline-flex h-7 w-7 items-center justify-center rounded-md text-slate-400 transition hover:bg-slate-100 hover:text-emerald-600 dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-emerald-300 md:static md:ml-auto md:h-9 md:w-auto md:gap-1 md:border md:border-dashed md:border-slate-300 md:px-3 md:text-sm md:font-medium md:text-slate-500 md:hover:border-emerald-400 md:hover:bg-emerald-50 md:hover:text-emerald-700 md:focus-visible:opacity-100 md:dark:border-slate-700 md:dark:text-slate-400 md:dark:hover:border-emerald-500 md:dark:hover:bg-emerald-500/10 md:dark:hover:text-emerald-200 ${
                 tabs.length === 0
                   ? ""
                   : "md:opacity-0 md:transition-opacity md:group-hover/tabs:opacity-100"
