@@ -1394,12 +1394,22 @@ function App() {
           collisionDetection={closestCenter}
           onDragEnd={handleTabDragEnd}
         >
+          <div className="relative">
+            {!showAddTab ? (
+              <button
+                type="button"
+                onClick={() => setShowAddTab(true)}
+                className="absolute -right-1 -top-3 z-10 inline-flex h-7 w-7 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-400 shadow-sm transition hover:border-emerald-300 hover:text-emerald-600 md:hidden dark:border-slate-700 dark:bg-slate-900 dark:text-slate-500 dark:hover:border-emerald-500 dark:hover:text-emerald-300"
+                aria-label="새 주제"
+                title="새 주제"
+              >
+                <Plus size={14} />
+              </button>
+            ) : null}
           <nav
             aria-label="주제"
             ref={tabNavRef}
-            className={`group/tabs relative flex flex-wrap items-center gap-2 rounded-lg border border-slate-200 bg-white p-2 shadow-sm md:pr-2 dark:border-slate-800 dark:bg-slate-950 ${
-              showAddTab ? "pr-2" : "pr-11"
-            }`}
+            className="group/tabs flex flex-wrap items-center gap-2 rounded-lg border border-slate-200 bg-white p-2 shadow-sm dark:border-slate-800 dark:bg-slate-950"
           >
             <SortableContext
               items={tabs.map((tab) => tab.id)}
@@ -1471,7 +1481,7 @@ function App() {
             <button
               type="button"
               onClick={() => setShowAddTab(true)}
-              className={`absolute right-2 top-2 inline-flex h-7 w-7 items-center justify-center rounded-md text-slate-400 transition hover:bg-slate-100 hover:text-emerald-600 dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-emerald-300 md:static md:ml-auto md:h-9 md:w-auto md:gap-1 md:border md:border-dashed md:border-slate-300 md:px-3 md:text-sm md:font-medium md:text-slate-500 md:hover:border-emerald-400 md:hover:bg-emerald-50 md:hover:text-emerald-700 md:focus-visible:opacity-100 md:dark:border-slate-700 md:dark:text-slate-400 md:dark:hover:border-emerald-500 md:dark:hover:bg-emerald-500/10 md:dark:hover:text-emerald-200 ${
+              className={`ml-auto hidden h-9 w-auto items-center justify-center gap-1 rounded-md border border-dashed border-slate-300 px-3 text-sm font-medium text-slate-500 transition hover:border-emerald-400 hover:bg-emerald-50 hover:text-emerald-700 focus-visible:opacity-100 md:inline-flex dark:border-slate-700 dark:text-slate-400 dark:hover:border-emerald-500 dark:hover:bg-emerald-500/10 dark:hover:text-emerald-200 ${
                 tabs.length === 0
                   ? ""
                   : "md:opacity-0 md:transition-opacity md:group-hover/tabs:opacity-100"
@@ -1482,6 +1492,7 @@ function App() {
             </button>
           )}
           </nav>
+          </div>
         </DndContext>
 
         {error ? (
