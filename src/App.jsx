@@ -13,6 +13,7 @@ import {
   LockKeyhole,
   LogOut,
   Moon,
+  Pencil,
   Plus,
   Quote,
   Settings,
@@ -499,7 +500,7 @@ function App() {
 
   const tabSensors = useSensors(
     useSensor(MouseSensor, { activationConstraint: { distance: 6 } }),
-    useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 6 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 500, tolerance: 6 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   );
 
@@ -2774,8 +2775,47 @@ function SortableTab({
   } = useSortable({ id: tab.id });
 
   const [isEditing, setIsEditing] = useState(false);
+  const [showTouchTools, setShowTouchTools] = useState(false);
+  const [longPressActive, setLongPressActive] = useState(false);
   const [draftName, setDraftName] = useState(tab.name);
   const inputRef = useRef(null);
+  const longPressTimerRef = useRef(null);
+  const pointerStartRef = useRef(null);
+
+  function clearLongPressTimer() {
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+  }
+
+  function handleTabPointerDown(event) {
+    if (isEditing || event.pointerType === "mouse") return;
+    pointerStartRef.current = { x: event.clientX, y: event.clientY };
+    setLongPressActive(true);
+    clearLongPressTimer();
+    longPressTimerRef.current = setTimeout(() => {
+      longPressTimerRef.current = null;
+      setLongPressActive(false);
+      setShowTouchTools(true);
+    }, 500);
+  }
+
+  function handleTabPointerMove(event) {
+    if (!pointerStartRef.current) return;
+    const dx = event.clientX - pointerStartRef.current.x;
+    const dy = event.clientY - pointerStartRef.current.y;
+    if (dx * dx + dy * dy > 36) {
+      clearLongPressTimer();
+      setLongPressActive(false);
+    }
+  }
+
+  function handleTabPointerEnd() {
+    clearLongPressTimer();
+    setLongPressActive(false);
+    pointerStartRef.current = null;
+  }
 
   useEffect(() => {
     if (!isEditing) setDraftName(tab.name);
@@ -2787,6 +2827,12 @@ function SortableTab({
       inputRef.current.select();
     }
   }, [isEditing]);
+
+  useEffect(() => {
+    if (!isActive) setShowTouchTools(false);
+  }, [isActive]);
+
+  useEffect(() => () => clearLongPressTimer(), []);
 
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -2803,11 +2849,13 @@ function SortableTab({
       setDraftName(tab.name);
     }
     setIsEditing(false);
+    setShowTouchTools(false);
   }
 
   function cancelRename() {
     setDraftName(tab.name);
     setIsEditing(false);
+    setShowTouchTools(false);
   }
 
   const dragProps = isEditing ? {} : { ...attributes, ...listeners };
@@ -2817,12 +2865,17 @@ function SortableTab({
       ref={setNodeRef}
       style={style}
       {...dragProps}
-      className={`group inline-flex touch-none select-none items-center gap-1 rounded-md transition ${
+      onPointerDown={handleTabPointerDown}
+      onPointerMove={handleTabPointerMove}
+      onPointerUp={handleTabPointerEnd}
+      onPointerCancel={handleTabPointerEnd}
+      className={`group inline-flex touch-pan-y select-none items-center gap-1 rounded-md transition ${
         isActive
           ? "bg-slate-950 text-white shadow-sm dark:bg-emerald-400 dark:text-slate-950"
           : "text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
       } ${isHighlighted ? "ring-2 ring-emerald-300 ring-offset-2 ring-offset-white dark:ring-emerald-300 dark:ring-offset-slate-950" : ""} ${
         isEditing ? "cursor-text" : isDragging ? "cursor-grabbing" : "cursor-grab"
+      } ${longPressActive ? "ring-2 ring-emerald-200 ring-offset-1 ring-offset-white dark:ring-emerald-500/40 dark:ring-offset-slate-950" : ""
       }`}
     >
       {isEditing ? (
@@ -2854,7 +2907,10 @@ function SortableTab({
       ) : (
         <button
           type="button"
-          onClick={() => onActivate(tab.id)}
+          onClick={() => {
+            onActivate(tab.id);
+            setShowTouchTools(false);
+          }}
           onDoubleClick={() => setIsEditing(true)}
           title="더블클릭하여 이름 변경"
           className="rounded-md px-3 py-2 text-sm font-semibold"
@@ -2864,11 +2920,35 @@ function SortableTab({
       )}
       <button
         type="button"
+        title={`${tab.name} 이름 변경`}
+        aria-label={`${tab.name} 이름 변경`}
+        onPointerDown={(event) => event.stopPropagation()}
+        onClick={() => {
+          setIsEditing(true);
+          setShowTouchTools(false);
+        }}
+        className={`h-6 w-6 items-center justify-center rounded transition md:hidden ${
+          showTouchTools ? "inline-flex" : "hidden"
+        } ${
+          isActive
+            ? "text-white/70 hover:bg-white/10 hover:text-white dark:text-slate-950/60 dark:hover:bg-slate-950/10"
+            : "text-slate-400 hover:bg-slate-200 hover:text-emerald-600 dark:text-slate-500 dark:hover:bg-slate-700 dark:hover:text-emerald-300"
+        }`}
+      >
+        <Pencil size={13} />
+      </button>
+      <button
+        type="button"
         title={`${tab.name} 삭제`}
         aria-label={`${tab.name} 삭제`}
         onPointerDown={(event) => event.stopPropagation()}
-        onClick={() => onRemove(tab.id)}
-        className={`mr-1 hidden h-6 w-6 items-center justify-center rounded transition group-hover:inline-flex focus-visible:inline-flex ${
+        onClick={() => {
+          setShowTouchTools(false);
+          onRemove(tab.id);
+        }}
+        className={`mr-1 h-6 w-6 items-center justify-center rounded transition focus-visible:inline-flex ${
+          showTouchTools ? "inline-flex md:hidden" : "hidden md:group-hover:inline-flex"
+        } ${
           isActive
             ? "text-white/70 hover:bg-white/10 hover:text-white dark:text-slate-950/60 dark:hover:bg-slate-950/10"
             : "text-slate-400 hover:bg-slate-200 hover:text-rose-600 dark:text-slate-500 dark:hover:bg-slate-700 dark:hover:text-rose-300"
