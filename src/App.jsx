@@ -233,7 +233,7 @@ function dDayColor(expiryDate) {
   return "text-emerald-500 dark:text-emerald-400";
 }
 
-function SubscriptionBar({ subscriptions, onSave, onDelete }) {
+function SubscriptionBar({ subscriptions, onSave, onDelete, addRequestKey = 0 }) {
   const [editingId, setEditingId] = useState(null);
   const [draftName, setDraftName] = useState("");
   const [draftDate, setDraftDate] = useState("");
@@ -249,6 +249,10 @@ function SubscriptionBar({ subscriptions, onSave, onDelete }) {
     setDraftName("");
     setDraftDate("");
   }
+
+  useEffect(() => {
+    if (addRequestKey > 0) startNew();
+  }, [addRequestKey]);
 
   function cancel() {
     setEditingId(null);
@@ -314,7 +318,7 @@ function SubscriptionBar({ subscriptions, onSave, onDelete }) {
       )}
       {subscriptions.length === 0 && editingId !== "new" ? (
         <span className="col-span-2 text-xs text-slate-400 dark:text-slate-500 md:col-span-1">
-          구독 만료일을 + 로 추가해보세요
+          구독 만료일을 추가해보세요
         </span>
       ) : null}
       {editingId === "new" ? (
@@ -340,7 +344,7 @@ function SubscriptionBar({ subscriptions, onSave, onDelete }) {
       ) : (
         <button
           onClick={startNew}
-          className={`inline-flex h-4 w-4 items-center justify-center justify-self-end rounded-full text-xs leading-none text-slate-200 transition hover:text-emerald-500 md:h-5 md:w-5 md:text-sm md:text-slate-400 dark:text-slate-700 dark:hover:text-emerald-400 md:border md:border-dashed md:border-slate-300 md:hover:border-emerald-400 md:focus-visible:opacity-100 md:dark:border-slate-600 md:dark:text-slate-500 md:dark:hover:border-emerald-500 ${
+          className={`hidden h-4 w-4 items-center justify-center justify-self-end rounded-full text-xs leading-none text-slate-200 transition hover:text-emerald-500 md:inline-flex md:h-5 md:w-5 md:border md:border-dashed md:border-slate-300 md:text-sm md:text-slate-400 md:hover:border-emerald-400 md:focus-visible:opacity-100 dark:text-slate-700 dark:hover:text-emerald-400 md:dark:border-slate-600 md:dark:text-slate-500 md:dark:hover:border-emerald-500 ${
             subscriptions.length === 0
               ? ""
               : "md:opacity-0 md:transition-opacity md:group-hover/sub:opacity-100"
@@ -482,6 +486,7 @@ function App() {
   const [newTabName, setNewTabName] = useState("");
   const [showAddTab, setShowAddTab] = useState(false);
   const [savingTab, setSavingTab] = useState(false);
+  const [subscriptionAddRequestKey, setSubscriptionAddRequestKey] = useState(0);
   const [newItemText, setNewItemText] = useState("");
   const [savingItem, setSavingItem] = useState(false);
   const [activeId, setActiveId] = useState(null);
@@ -1319,6 +1324,14 @@ function App() {
               onToggleMotto={() => setShowMotto((value) => !value)}
               showSubBar={showSubBar}
               onToggleSubBar={() => setShowSubBar((value) => !value)}
+              onAddSubscription={() => {
+                setShowSubBar(true);
+                setSubscriptionAddRequestKey((value) => value + 1);
+              }}
+              onAddTab={() => {
+                setShowAddTab(true);
+                setNewTabName("");
+              }}
               showInProgressSummary={showInProgressSummary}
               onToggleInProgressSummary={() =>
                 setShowInProgressSummary((value) => !value)
@@ -1343,6 +1356,7 @@ function App() {
                 subscriptions={subscriptions}
                 onSave={handleSaveSub}
                 onDelete={handleDeleteSub}
+                addRequestKey={subscriptionAddRequestKey}
               />
             </div>
           ) : null}
@@ -1394,18 +1408,6 @@ function App() {
           collisionDetection={closestCenter}
           onDragEnd={handleTabDragEnd}
         >
-          <div className="relative">
-            {!showAddTab ? (
-              <button
-                type="button"
-                onClick={() => setShowAddTab(true)}
-                className="absolute -right-1 -top-3 z-10 inline-flex h-7 w-7 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-400 shadow-sm transition hover:border-emerald-300 hover:text-emerald-600 md:hidden dark:border-slate-700 dark:bg-slate-900 dark:text-slate-500 dark:hover:border-emerald-500 dark:hover:text-emerald-300"
-                aria-label="새 주제"
-                title="새 주제"
-              >
-                <Plus size={14} />
-              </button>
-            ) : null}
           <nav
             aria-label="주제"
             ref={tabNavRef}
@@ -1492,7 +1494,6 @@ function App() {
             </button>
           )}
           </nav>
-          </div>
         </DndContext>
 
         {error ? (
@@ -2996,6 +2997,8 @@ function SettingsMenu({
   onToggleMotto,
   showSubBar,
   onToggleSubBar,
+  onAddSubscription,
+  onAddTab,
   showInProgressSummary,
   onToggleInProgressSummary,
   onLogout,
@@ -3071,6 +3074,33 @@ function SettingsMenu({
               className={themeOptionClass(theme === "dark")}
             >
               <Moon size={14} /> 다크
+            </button>
+          </div>
+          <div className="md:hidden">
+            <div className="px-2 pb-1 pt-1 text-[11px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">
+              작업
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                setOpen(false);
+                onAddSubscription?.();
+              }}
+              className="flex w-full items-center gap-2 rounded-md px-2 py-2 text-sm text-slate-700 transition hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800"
+            >
+              <BellRing size={14} />
+              구독 추가
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setOpen(false);
+                onAddTab?.();
+              }}
+              className="flex w-full items-center gap-2 rounded-md px-2 py-2 text-sm text-slate-700 transition hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800"
+            >
+              <Plus size={14} />
+              탭 추가
             </button>
           </div>
           <div className="px-2 pb-1 pt-1 text-[11px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">
