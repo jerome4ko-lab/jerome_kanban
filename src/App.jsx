@@ -55,8 +55,16 @@ const STATUSES = [
 
 const MEDITATION_TRACKS = [
   { src: "/audio/track1.mp3", label: "아침확언", cues: [0, 10] },
-  { src: "/audio/track2.mp3", label: "싱잉볼", cues: [0, 10] },
+  { src: "/audio/track2.mp3", label: "싱잉볼", cues: [0, 268] },
 ];
+
+function formatMmSs(seconds) {
+  if (seconds == null || !isFinite(seconds) || seconds < 0) return null;
+  const total = Math.floor(seconds);
+  const m = Math.floor(total / 60);
+  const s = total % 60;
+  return `${m}:${String(s).padStart(2, "0")}`;
+}
 
 function formatToday(date = new Date()) {
   const yyyy = date.getFullYear();
@@ -502,6 +510,8 @@ function App() {
   const [showCalendar, setShowCalendar] = useState(false);
   const [showMeditation, setShowMeditation] = useState(false);
   const [playingCue, setPlayingCue] = useState(null);
+  const [trackDurations, setTrackDurations] = useState({});
+  const [playingRemaining, setPlayingRemaining] = useState(null);
   const meditationAudioRef = useRef(null);
   const tabNavRef = useRef(null);
   const tabHintTimer = useRef(null);
@@ -694,6 +704,49 @@ function App() {
       }
     };
   }, []);
+
+  useEffect(() => {
+    if (!showMeditation) return;
+    const probes = [];
+    MEDITATION_TRACKS.forEach((track, idx) => {
+      const probe = new Audio();
+      probe.preload = "metadata";
+      probe.addEventListener("loadedmetadata", () => {
+        setTrackDurations((prev) =>
+          prev[idx] != null ? prev : { ...prev, [idx]: probe.duration },
+        );
+      });
+      probe.addEventListener("error", () => {});
+      probe.src = track.src;
+      probes.push(probe);
+    });
+    return () => {
+      probes.forEach((p) => {
+        p.src = "";
+      });
+    };
+  }, [showMeditation]);
+
+  useEffect(() => {
+    const audio = meditationAudioRef.current;
+    if (!audio || !playingCue) {
+      setPlayingRemaining(null);
+      return;
+    }
+    const update = () => {
+      const dur = audio.duration;
+      if (dur && isFinite(dur)) {
+        setPlayingRemaining(Math.max(0, dur - audio.currentTime));
+      }
+    };
+    update();
+    audio.addEventListener("timeupdate", update);
+    audio.addEventListener("loadedmetadata", update);
+    return () => {
+      audio.removeEventListener("timeupdate", update);
+      audio.removeEventListener("loadedmetadata", update);
+    };
+  }, [playingCue]);
 
   function handleMeditationCue(trackIndex, cueIndex) {
     const track = MEDITATION_TRACKS[trackIndex];
@@ -1759,12 +1812,19 @@ function App() {
                   <span className="w-14 text-right text-xs font-medium text-slate-500 dark:text-slate-400">
                     {track.label}
                   </span>
-                  {track.cues.map((_, cueIndex) => {
+                  {track.cues.map((cueStart, cueIndex) => {
                     const isActive =
                       playingCue &&
                       playingCue.track === trackIndex &&
                       playingCue.cue === cueIndex;
                     const cueLetter = String.fromCharCode(65 + cueIndex);
+                    const dur = trackDurations[trackIndex];
+                    let timeText = null;
+                    if (isActive && playingRemaining != null) {
+                      timeText = formatMmSs(playingRemaining);
+                    } else if (dur != null) {
+                      timeText = formatMmSs(dur - cueStart);
+                    }
                     return (
                       <button
                         key={cueIndex}
@@ -1779,6 +1839,11 @@ function App() {
                       >
                         {isActive ? <Square size={11} /> : <Play size={11} />}
                         <span>{cueLetter}</span>
+                        {timeText && (
+                          <span className="ml-0.5 tabular-nums text-[10px] opacity-70">
+                            {timeText}
+                          </span>
+                        )}
                       </button>
                     );
                   })}
