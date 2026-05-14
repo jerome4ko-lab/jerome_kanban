@@ -54,7 +54,7 @@ const STATUSES = [
 ];
 
 const MEDITATION_TRACKS = [
-  { src: "/audio/track1.mp3", label: "아침확언", cues: [0, 10] },
+  { src: "/audio/track1.mp3", label: "아침확언", cues: [0, 54] },
   { src: "/audio/track2.mp3", label: "싱잉볼", cues: [0, 268] },
 ];
 
