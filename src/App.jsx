@@ -8,15 +8,18 @@ import {
   ClipboardList,
   Eye,
   EyeOff,
+  Headphones,
   ListTodo,
   Loader2,
   LockKeyhole,
   LogOut,
   Moon,
   Pencil,
+  Play,
   Plus,
   Quote,
   Settings,
+  Square,
   Sun,
   Trash2,
   X,
@@ -48,6 +51,11 @@ const STATUSES = [
   { id: "in_progress", label: "진행중", icon: CircleDashed, accent: "sky" },
   { id: "done", label: "완료", icon: CheckCircle2, accent: "amber" },
   { id: "hidden", label: "숨김", icon: EyeOff, accent: "slate" },
+];
+
+const MEDITATION_TRACKS = [
+  { src: "/audio/track1.mp3", label: "1", cues: [60, 300] },
+  { src: "/audio/track2.mp3", label: "2", cues: [45, 240] },
 ];
 
 function formatToday(date = new Date()) {
@@ -492,6 +500,9 @@ function App() {
   const [activeId, setActiveId] = useState(null);
   const [tabHintActive, setTabHintActive] = useState(false);
   const [showCalendar, setShowCalendar] = useState(false);
+  const [showMeditation, setShowMeditation] = useState(false);
+  const [playingCue, setPlayingCue] = useState(null);
+  const meditationAudioRef = useRef(null);
   const tabNavRef = useRef(null);
   const tabHintTimer = useRef(null);
   const itemTimers = useRef(new Map());
@@ -672,6 +683,77 @@ function App() {
       itemTimers.current.clear();
     };
   }, []);
+
+  useEffect(() => {
+    return () => {
+      const audio = meditationAudioRef.current;
+      if (audio) {
+        audio.pause();
+        audio.src = "";
+        meditationAudioRef.current = null;
+      }
+    };
+  }, []);
+
+  function handleMeditationCue(trackIndex, cueIndex) {
+    const track = MEDITATION_TRACKS[trackIndex];
+    if (!track) return;
+    const startSec = track.cues[cueIndex];
+
+    if (
+      playingCue &&
+      playingCue.track === trackIndex &&
+      playingCue.cue === cueIndex
+    ) {
+      if (meditationAudioRef.current) {
+        meditationAudioRef.current.pause();
+      }
+      setPlayingCue(null);
+      return;
+    }
+
+    if (!meditationAudioRef.current) {
+      const el = new Audio();
+      el.preload = "none";
+      el.addEventListener("ended", () => setPlayingCue(null));
+      el.addEventListener("error", () => setPlayingCue(null));
+      meditationAudioRef.current = el;
+    }
+
+    const audio = meditationAudioRef.current;
+    audio.pause();
+
+    const desiredSrc = new URL(track.src, window.location.origin).toString();
+    const srcChanged = audio.src !== desiredSrc;
+    if (srcChanged) {
+      audio.src = track.src;
+    }
+
+    const startAt = () => {
+      try {
+        audio.currentTime = startSec;
+      } catch {
+        /* metadata가 아직 없으면 무시; play() 후 다시 시도되지 않아도 무방 */
+      }
+      const playPromise = audio.play();
+      if (playPromise && typeof playPromise.catch === "function") {
+        playPromise.catch(() => setPlayingCue(null));
+      }
+    };
+
+    if (srcChanged || audio.readyState < 1) {
+      const onLoaded = () => {
+        audio.removeEventListener("loadedmetadata", onLoaded);
+        startAt();
+      };
+      audio.addEventListener("loadedmetadata", onLoaded);
+      audio.load();
+    } else {
+      startAt();
+    }
+
+    setPlayingCue({ track: trackIndex, cue: cueIndex });
+  }
 
   function focusTabNavFromInput() {
     tabNavRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
@@ -1649,6 +1731,54 @@ function App() {
                 onUpdate={handleUpdateCalendarNote}
                 onDelete={handleDeleteCalendarNote}
               />
+            </div>
+          )}
+        </div>
+
+        {/* 명상 토글 */}
+        <div className="mt-2 border-t border-slate-200 pt-3 dark:border-slate-800">
+          <button
+            type="button"
+            onClick={() => setShowMeditation((v) => !v)}
+            className="flex w-full items-center justify-center gap-1.5 rounded-lg py-1.5 text-xs font-medium text-slate-400 transition hover:text-slate-600 dark:text-slate-600 dark:hover:text-slate-400"
+          >
+            <Headphones size={13} />
+            <span>명상</span>
+            <ChevronDown
+              size={13}
+              className={`transition-transform duration-200 ${showMeditation ? "rotate-180" : ""}`}
+            />
+          </button>
+          {showMeditation && (
+            <div className="mt-3 flex flex-wrap items-center justify-center gap-2 pb-4">
+              {MEDITATION_TRACKS.map((track, trackIndex) =>
+                track.cues.map((_, cueIndex) => {
+                  const isActive =
+                    playingCue &&
+                    playingCue.track === trackIndex &&
+                    playingCue.cue === cueIndex;
+                  const cueLetter = String.fromCharCode(65 + cueIndex);
+                  return (
+                    <button
+                      key={`${trackIndex}-${cueIndex}`}
+                      type="button"
+                      onClick={() => handleMeditationCue(trackIndex, cueIndex)}
+                      aria-label={`트랙 ${track.label} 시작점 ${cueLetter} ${isActive ? "정지" : "재생"}`}
+                      className={`flex items-center gap-1 rounded-lg border px-2.5 py-1 text-xs font-medium transition ${
+                        isActive
+                          ? "border-emerald-300 bg-emerald-50 text-emerald-700 dark:border-emerald-700 dark:bg-emerald-950 dark:text-emerald-300"
+                          : "border-slate-200 text-slate-500 hover:border-slate-300 hover:text-slate-700 dark:border-slate-800 dark:text-slate-400 dark:hover:border-slate-700 dark:hover:text-slate-200"
+                      }`}
+                    >
+                      {isActive ? <Square size={11} /> : <Play size={11} />}
+                      <span>
+                        {track.label}
+                        {cueLetter}
+                      </span>
+                    </button>
+                  );
+                }),
+              )}
             </div>
           )}
         </div>
