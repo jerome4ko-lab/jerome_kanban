@@ -54,8 +54,8 @@ const STATUSES = [
 ];
 
 const MEDITATION_TRACKS = [
-  { src: "/audio/track1.mp3", label: "명상", cues: [60, 300] },
-  { src: "/audio/track2.mp3", label: "싱잉볼", cues: [45, 240] },
+  { src: "/audio/track1.mp3", label: "아침확언", cues: [0, 10] },
+  { src: "/audio/track2.mp3", label: "싱잉볼", cues: [0, 10] },
 ];
 
 function formatToday(date = new Date()) {
