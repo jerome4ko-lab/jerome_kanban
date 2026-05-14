@@ -1,5 +1,5 @@
 import { createReadStream, existsSync } from "node:fs";
-import { readFile } from "node:fs/promises";
+import { readFile, stat } from "node:fs/promises";
 import { createServer } from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -52,12 +52,58 @@ async function serveStatic(req, res) {
   }
 
   try {
+    const fileStat = await stat(filePath);
+    const fileSize = fileStat.size;
+    const contentType = mimeTypes[extension] || "application/octet-stream";
+    const cacheControl =
+      extension === ".html"
+        ? "no-cache"
+        : "public, max-age=31536000, immutable";
+
+    const rangeHeader = req.headers.range;
+    const rangeMatch = rangeHeader && /^bytes=(\d*)-(\d*)$/.exec(rangeHeader);
+    if (rangeMatch) {
+      const startStr = rangeMatch[1];
+      const endStr = rangeMatch[2];
+      let start = startStr === "" ? NaN : Number(startStr);
+      let end = endStr === "" ? NaN : Number(endStr);
+      if (Number.isNaN(start) && !Number.isNaN(end)) {
+        // suffix range: bytes=-N → last N bytes
+        start = Math.max(0, fileSize - end);
+        end = fileSize - 1;
+      } else if (!Number.isNaN(start) && Number.isNaN(end)) {
+        end = fileSize - 1;
+      }
+      if (
+        Number.isNaN(start) ||
+        Number.isNaN(end) ||
+        start > end ||
+        start >= fileSize
+      ) {
+        res.writeHead(416, {
+          "content-range": `bytes */${fileSize}`,
+          "accept-ranges": "bytes",
+        });
+        res.end();
+        return;
+      }
+      const chunkSize = end - start + 1;
+      res.writeHead(206, {
+        "content-type": contentType,
+        "content-range": `bytes ${start}-${end}/${fileSize}`,
+        "accept-ranges": "bytes",
+        "content-length": chunkSize,
+        "cache-control": cacheControl,
+      });
+      createReadStream(filePath, { start, end }).pipe(res);
+      return;
+    }
+
     res.writeHead(200, {
-      "content-type": mimeTypes[extension] || "application/octet-stream",
-      "cache-control":
-        extension === ".html"
-          ? "no-cache"
-          : "public, max-age=31536000, immutable",
+      "content-type": contentType,
+      "content-length": fileSize,
+      "accept-ranges": "bytes",
+      "cache-control": cacheControl,
     });
     createReadStream(filePath).pipe(res);
   } catch {

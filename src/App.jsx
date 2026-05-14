@@ -794,12 +794,12 @@ function App() {
       }
     };
 
-    if (srcChanged || audio.readyState < 1) {
-      const onLoaded = () => {
-        audio.removeEventListener("loadedmetadata", onLoaded);
+    if (srcChanged || audio.readyState < 2) {
+      const onReady = () => {
+        audio.removeEventListener("canplay", onReady);
         startAt();
       };
-      audio.addEventListener("loadedmetadata", onLoaded);
+      audio.addEventListener("canplay", onReady);
       audio.load();
     } else {
       startAt();
