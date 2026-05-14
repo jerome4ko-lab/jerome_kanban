@@ -54,8 +54,8 @@ const STATUSES = [
 ];
 
 const MEDITATION_TRACKS = [
-  { src: "/audio/track1.mp3", label: "1", cues: [60, 300] },
-  { src: "/audio/track2.mp3", label: "2", cues: [45, 240] },
+  { src: "/audio/track1.mp3", label: "명상", cues: [60, 300] },
+  { src: "/audio/track2.mp3", label: "싱잉볼", cues: [45, 240] },
 ];
 
 function formatToday(date = new Date()) {
@@ -1750,35 +1750,40 @@ function App() {
             />
           </button>
           {showMeditation && (
-            <div className="mt-3 flex flex-wrap items-center justify-center gap-2 pb-4">
-              {MEDITATION_TRACKS.map((track, trackIndex) =>
-                track.cues.map((_, cueIndex) => {
-                  const isActive =
-                    playingCue &&
-                    playingCue.track === trackIndex &&
-                    playingCue.cue === cueIndex;
-                  const cueLetter = String.fromCharCode(65 + cueIndex);
-                  return (
-                    <button
-                      key={`${trackIndex}-${cueIndex}`}
-                      type="button"
-                      onClick={() => handleMeditationCue(trackIndex, cueIndex)}
-                      aria-label={`트랙 ${track.label} 시작점 ${cueLetter} ${isActive ? "정지" : "재생"}`}
-                      className={`flex items-center gap-1 rounded-lg border px-2.5 py-1 text-xs font-medium transition ${
-                        isActive
-                          ? "border-emerald-300 bg-emerald-50 text-emerald-700 dark:border-emerald-700 dark:bg-emerald-950 dark:text-emerald-300"
-                          : "border-slate-200 text-slate-500 hover:border-slate-300 hover:text-slate-700 dark:border-slate-800 dark:text-slate-400 dark:hover:border-slate-700 dark:hover:text-slate-200"
-                      }`}
-                    >
-                      {isActive ? <Square size={11} /> : <Play size={11} />}
-                      <span>
-                        {track.label}
-                        {cueLetter}
-                      </span>
-                    </button>
-                  );
-                }),
-              )}
+            <div className="mt-3 flex flex-col gap-2 pb-4">
+              {MEDITATION_TRACKS.map((track, trackIndex) => (
+                <div
+                  key={trackIndex}
+                  className="flex items-center justify-center gap-2"
+                >
+                  <span className="w-14 text-right text-xs font-medium text-slate-500 dark:text-slate-400">
+                    {track.label}
+                  </span>
+                  {track.cues.map((_, cueIndex) => {
+                    const isActive =
+                      playingCue &&
+                      playingCue.track === trackIndex &&
+                      playingCue.cue === cueIndex;
+                    const cueLetter = String.fromCharCode(65 + cueIndex);
+                    return (
+                      <button
+                        key={cueIndex}
+                        type="button"
+                        onClick={() => handleMeditationCue(trackIndex, cueIndex)}
+                        aria-label={`${track.label} 시작점 ${cueLetter} ${isActive ? "정지" : "재생"}`}
+                        className={`flex items-center gap-1 rounded-lg border px-2.5 py-1 text-xs font-medium transition ${
+                          isActive
+                            ? "border-emerald-300 bg-emerald-50 text-emerald-700 dark:border-emerald-700 dark:bg-emerald-950 dark:text-emerald-300"
+                            : "border-slate-200 text-slate-500 hover:border-slate-300 hover:text-slate-700 dark:border-slate-800 dark:text-slate-400 dark:hover:border-slate-700 dark:hover:text-slate-200"
+                        }`}
+                      >
+                        {isActive ? <Square size={11} /> : <Play size={11} />}
+                        <span>{cueLetter}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              ))}
             </div>
           )}
         </div>
