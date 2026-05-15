@@ -7,6 +7,7 @@ const SESSION_MAX_AGE_SECONDS = 60 * 60 * 24 * 7;
 const SESSION_MAX_AGE_MS = SESSION_MAX_AGE_SECONDS * 1000;
 const STATUSES = ["todo", "in_progress", "done", "okr", "hidden"];
 const STATUS_SET = new Set(STATUSES);
+const PRIORITY_TAB_NAME = "우선순위";
 const BCRYPT_COST = 12;
 const USERNAME_REGEX = /^[a-z0-9_]{3,30}$/;
 const PASSWORD_MIN_LENGTH = 8;
@@ -907,6 +908,13 @@ async function updateTab(env, userId, tabId, payload) {
   const params = [tabId, userId];
 
   if (payload.name !== undefined) {
+    const current = await getPool(env).query(
+      `SELECT name FROM kanban_tabs WHERE id = $1 AND user_id = $2`,
+      [tabId, userId],
+    );
+    if (current.rows[0]?.name === PRIORITY_TAB_NAME) {
+      throw new HttpError(409, "우선순위 탭은 이름을 변경할 수 없습니다.");
+    }
     sets.push(`name = $${params.length + 1}`);
     params.push(validateText(payload.name, "주제 이름", 60));
   }
@@ -936,7 +944,15 @@ async function updateTab(env, userId, tabId, payload) {
 
 async function deleteTab(env, userId, tabId) {
   await ensureSchema(env);
-  const result = await getPool(env).query(
+  const db = getPool(env);
+  const target = await db.query(
+    `SELECT name FROM kanban_tabs WHERE id = $1 AND user_id = $2`,
+    [tabId, userId],
+  );
+  if (target.rows[0]?.name === PRIORITY_TAB_NAME) {
+    throw new HttpError(409, "우선순위 탭은 삭제할 수 없습니다.");
+  }
+  const result = await db.query(
     `DELETE FROM kanban_tabs WHERE id = $1 AND user_id = $2`,
     [tabId, userId],
   );
@@ -953,16 +969,20 @@ async function createItem(env, userId, payload) {
   }
   const text = validateText(payload.text, "항목");
   const groupName = validateGroupName(payload.groupName);
-  const status = payload.status ? validateStatus(payload.status) : "todo";
   const id = randomUUID();
   const db = getPool(env);
 
   const tab = await db.query(
-    `SELECT id FROM kanban_tabs WHERE id = $1 AND user_id = $2`,
+    `SELECT id, name FROM kanban_tabs WHERE id = $1 AND user_id = $2`,
     [tabId, userId],
   );
   if (tab.rowCount === 0) {
     throw new HttpError(400, "올바르지 않은 주제입니다.");
+  }
+
+  let status = payload.status ? validateStatus(payload.status) : "todo";
+  if (tab.rows[0].name === PRIORITY_TAB_NAME) {
+    status = "in_progress";
   }
 
   const result = await db.query(
@@ -1132,6 +1152,15 @@ async function handleSignup(req, res, env) {
       throw new HttpError(409, "이미 사용 중인 사용자명입니다.");
     }
     throw err;
+  }
+
+  try {
+    await getPool(env).query(
+      `INSERT INTO kanban_tabs (id, user_id, name, position) VALUES ($1, $2, $3, $4)`,
+      [randomUUID(), user.id, PRIORITY_TAB_NAME, 0],
+    );
+  } catch (tabErr) {
+    console.error("우선순위 탭 자동 생성 실패:", tabErr);
   }
 
   sendJson(

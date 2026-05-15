@@ -53,6 +53,8 @@ const STATUSES = [
   { id: "hidden", label: "숨김", icon: EyeOff, accent: "slate" },
 ];
 
+const PRIORITY_TAB_NAME = "우선순위";
+
 const MEDITATION_TRACKS = [
   { src: "/audio/track1.mp3", label: "아침확언", cues: [0, 54] },
   { src: "/audio/track2.mp3", label: "싱잉볼", cues: [0, 268] },
@@ -1094,6 +1096,10 @@ function App() {
 
   async function removeTab(tabId) {
     const tab = tabs.find((entry) => entry.id === tabId);
+    if (tab?.name === PRIORITY_TAB_NAME) {
+      showToast("우선순위 탭은 삭제할 수 없습니다.");
+      return;
+    }
     const itemCount = items.filter((entry) => entry.tabId === tabId).length;
     const message =
       itemCount > 0
@@ -1121,6 +1127,10 @@ function App() {
     const trimmed = nextName.trim();
     const target = tabs.find((entry) => entry.id === tabId);
     if (!target || !trimmed || trimmed === target.name) return;
+    if (target.name === PRIORITY_TAB_NAME) {
+      showToast("우선순위 탭은 이름을 변경할 수 없습니다.");
+      return;
+    }
 
     const previous = tabs;
     setTabs((current) =>
