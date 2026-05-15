@@ -56,8 +56,8 @@ const STATUSES = [
 const PRIORITY_TAB_NAME = "우선순위";
 
 const MEDITATION_TRACKS = [
-  { src: "/audio/track1.mp3", label: "아침확언", cues: [0, 54] },
-  { src: "/audio/track2.mp3", label: "싱잉볼", cues: [0, 268] },
+  { src: "/audio/track1.mp3", label: "☀️ 아침확언", cues: [0, 54] },
+  { src: "/audio/track2.mp3", label: "🧘 싱잉볼", cues: [0, 268] },
 ];
 
 function formatMmSs(seconds) {
@@ -1819,7 +1819,7 @@ function App() {
                   key={trackIndex}
                   className="flex items-center justify-center gap-2"
                 >
-                  <span className="w-14 text-right text-xs font-medium text-slate-500 dark:text-slate-400">
+                  <span className="w-20 text-center text-xs font-medium text-slate-500 dark:text-slate-400">
                     {track.label}
                   </span>
                   {track.cues.map((cueStart, cueIndex) => {
