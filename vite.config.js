@@ -35,7 +35,18 @@ export default defineConfig(({ mode }) => {
       apiPlugin(env),
       VitePWA({
         registerType: "autoUpdate",
-        workbox: { skipWaiting: true, clientsClaim: true },
+        workbox: {
+          skipWaiting: true,
+          clientsClaim: true,
+          navigateFallbackDenylist: [/^\/audio\//, /^\/api\//],
+          runtimeCaching: [
+            {
+              urlPattern: /\/audio\/.*\.mp3$/,
+              handler: "NetworkOnly",
+              method: "GET",
+            },
+          ],
+        },
         includeAssets: ["favicon.ico", "apple-touch-icon-180x180.png"],
         manifest: {
           name: "Pace",
