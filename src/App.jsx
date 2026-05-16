@@ -58,6 +58,7 @@ const PRIORITY_TAB_NAME = "우선순위";
 const MEDITATION_TRACKS = [
   { src: "/audio/track1.mp3", label: "☀️ 아침확언", cues: [0, 54] },
   { src: "/audio/track2.mp3", label: "🧘 싱잉볼", cues: [0, 268] },
+  { src: "/audio/track3.mp3", label: "🎯 집중", cues: [0, 60] },
 ];
 
 function formatMmSs(seconds) {
