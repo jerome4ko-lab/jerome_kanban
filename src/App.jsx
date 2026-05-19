@@ -1228,6 +1228,12 @@ function App() {
     await Promise.all(targets.map((item) => moveItem(item.id, "hidden")));
   }
 
+  async function moveAllDoneToHidden() {
+    const targets = activeItems.filter((item) => item.status === "done");
+    if (targets.length === 0) return;
+    await Promise.all(targets.map((item) => moveItem(item.id, "hidden")));
+  }
+
   async function moveItemToHidden(itemId) {
     await moveItem(itemId, "hidden");
   }
@@ -1753,6 +1759,7 @@ function App() {
                     onFlushMemos={flushItemMemos}
                     groupSuggestions={activeGroupNames}
                     onMoveGroupToHidden={status.id === "done" ? moveGroupToHidden : undefined}
+                    onMoveAllToHidden={status.id === "done" ? moveAllDoneToHidden : undefined}
                     onMoveItemToHidden={status.id === "done" ? moveItemToHidden : undefined}
                     isFirstUseHint={activeItems.length === 0 && status.id === "todo"}
                   />
@@ -2508,6 +2515,7 @@ function KanbanColumn({
   onFlushMemos,
   groupSuggestions,
   onMoveGroupToHidden,
+  onMoveAllToHidden,
   onMoveItemToHidden,
   isFirstUseHint = false,
 }) {
@@ -2552,7 +2560,7 @@ function KanbanColumn({
           : "border-slate-200 dark:border-slate-800"
       }`}
     >
-      <div className="flex items-center justify-between gap-2">
+      <div className="group/header flex items-center justify-between gap-2">
         <div className="flex min-w-0 items-center gap-2">
           <span
             className={`inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md ${accentBg(status.accent)}`}
@@ -2563,9 +2571,22 @@ function KanbanColumn({
             {status.label}
           </h2>
         </div>
-        <span className="inline-flex min-w-7 items-center justify-center rounded-md border border-slate-200 px-1.5 py-0.5 text-xs font-bold text-slate-500 dark:border-slate-700 dark:text-slate-300">
-          {items.length}
-        </span>
+        <div className="flex items-center gap-1">
+          {onMoveAllToHidden && items.length > 0 ? (
+            <button
+              type="button"
+              onClick={onMoveAllToHidden}
+              title="완료 항목 모두 숨기기"
+              aria-label="완료 항목 모두 숨기기"
+              className="inline-flex h-6 w-6 items-center justify-center rounded text-slate-400 opacity-0 transition group-hover/header:opacity-100 hover:bg-slate-100 hover:text-slate-600 dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-slate-300"
+            >
+              <EyeOff size={13} />
+            </button>
+          ) : null}
+          <span className="inline-flex min-w-7 items-center justify-center rounded-md border border-slate-200 px-1.5 py-0.5 text-xs font-bold text-slate-500 dark:border-slate-700 dark:text-slate-300">
+            {items.length}
+          </span>
+        </div>
       </div>
 
       <div className="flex min-h-[80px] flex-col gap-2">
