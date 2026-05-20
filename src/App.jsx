@@ -3469,13 +3469,13 @@ function SettingsMenu({
                 onChange={(e) => setPwInput(e.target.value)}
                 placeholder={pwError ? "비밀번호 오류" : "비밀번호"}
                 inputMode="numeric"
-                className={`w-full bg-transparent text-sm text-slate-700 outline-none placeholder:text-slate-400 dark:text-slate-100 dark:placeholder:text-slate-500 ${
+                className={`min-w-0 flex-1 bg-transparent text-sm text-slate-700 outline-none placeholder:text-slate-400 dark:text-slate-100 dark:placeholder:text-slate-500 ${
                   pwError ? "placeholder:text-rose-500 dark:placeholder:text-rose-400" : ""
                 }`}
               />
               <button
                 type="submit"
-                className="rounded bg-emerald-500 px-2 py-0.5 text-xs font-semibold text-white hover:bg-emerald-600"
+                className="shrink-0 whitespace-nowrap rounded bg-emerald-500 px-2.5 py-1 text-xs font-semibold text-white hover:bg-emerald-600"
               >
                 확인
               </button>
