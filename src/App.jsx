@@ -55,6 +55,8 @@ const STATUSES = [
 
 const PRIORITY_TAB_NAME = "우선순위";
 
+const MEDITATION_PASSWORD = "0419";
+
 const MEDITATION_TRACKS = [
   { src: "/audio/track1.mp3", label: "☀️ 아침확언", cues: [{ start: 0 }, { start: 54 }] },
   { src: "/audio/track2.mp3", label: "🧘 싱잉볼", cues: [{ start: 0 }, { start: 268 }] },
@@ -483,6 +485,10 @@ function App() {
   const [showInProgressSummary, setShowInProgressSummary] = useLocalToggle(
     "showInProgressSummary",
     true,
+  );
+  const [meditationEnabled, setMeditationEnabled] = useLocalToggle(
+    "meditationEnabled",
+    false,
   );
   const [subscriptions, setSubscriptions] = useState([]);
   const [calendarNotes, setCalendarNotes] = useState([]);
@@ -1503,6 +1509,8 @@ function App() {
               onToggleInProgressSummary={() =>
                 setShowInProgressSummary((value) => !value)
               }
+              meditationEnabled={meditationEnabled}
+              onSetMeditationEnabled={setMeditationEnabled}
               onLogout={handleLogout}
               currentUser={currentUser}
             />
@@ -1821,7 +1829,8 @@ function App() {
           )}
         </div>
 
-        {/* 명상 토글 */}
+        {/* 명상 토글 (설정에서 켠 경우에만 노출) */}
+        {meditationEnabled && (
         <div className="mt-2 border-t border-slate-200 pt-3 dark:border-slate-800">
           <button
             type="button"
@@ -1886,6 +1895,7 @@ function App() {
             </div>
           )}
         </div>
+        )}
       </div>
       <Toast toast={toast} />
     </main>
@@ -3249,10 +3259,15 @@ function SettingsMenu({
   onAddTab,
   showInProgressSummary,
   onToggleInProgressSummary,
+  meditationEnabled,
+  onSetMeditationEnabled,
   onLogout,
   currentUser,
 }) {
   const [open, setOpen] = useState(false);
+  const [pwPromptActive, setPwPromptActive] = useState(false);
+  const [pwInput, setPwInput] = useState("");
+  const [pwError, setPwError] = useState(false);
   const containerRef = useRef(null);
 
   useEffect(() => {
@@ -3406,6 +3421,66 @@ function SettingsMenu({
               {showHidden ? "표시 중" : "숨김"}
             </span>
           </button>
+          <button
+            type="button"
+            onClick={() => {
+              if (meditationEnabled) {
+                onSetMeditationEnabled(false);
+                setPwPromptActive(false);
+                setPwInput("");
+                setPwError(false);
+              } else {
+                setPwPromptActive((v) => !v);
+                setPwInput("");
+                setPwError(false);
+              }
+            }}
+            className="flex w-full items-center justify-between gap-2 rounded-md px-2 py-2 text-sm text-slate-700 transition hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800"
+          >
+            <span className="inline-flex items-center gap-2">
+              {meditationEnabled ? <Eye size={14} /> : <EyeOff size={14} />}
+              명상 영역
+            </span>
+            <span className="text-xs text-slate-400 dark:text-slate-500">
+              {meditationEnabled ? "표시 중" : "숨김"}
+            </span>
+          </button>
+          {!meditationEnabled && pwPromptActive ? (
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (pwInput === MEDITATION_PASSWORD) {
+                  onSetMeditationEnabled(true);
+                  setPwPromptActive(false);
+                  setPwInput("");
+                  setPwError(false);
+                } else {
+                  setPwError(true);
+                  setPwInput("");
+                  window.setTimeout(() => setPwError(false), 1500);
+                }
+              }}
+              className="mb-1 flex items-center gap-1 rounded-md bg-slate-50 px-2 py-1.5 dark:bg-slate-800"
+            >
+              <input
+                type="password"
+                autoFocus
+                value={pwInput}
+                onChange={(e) => setPwInput(e.target.value)}
+                placeholder={pwError ? "비밀번호 오류" : "비밀번호"}
+                inputMode="numeric"
+                className={`w-full bg-transparent text-sm text-slate-700 outline-none placeholder:text-slate-400 dark:text-slate-100 dark:placeholder:text-slate-500 ${
+                  pwError ? "placeholder:text-rose-500 dark:placeholder:text-rose-400" : ""
+                }`}
+              />
+              <button
+                type="submit"
+                className="rounded bg-emerald-500 px-2 py-0.5 text-xs font-semibold text-white hover:bg-emerald-600"
+              >
+                확인
+              </button>
+            </form>
+          ) : null}
           <hr className="my-1 border-slate-200 dark:border-slate-700" />
           <button
             type="button"
