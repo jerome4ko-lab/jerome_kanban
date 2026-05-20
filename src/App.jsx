@@ -1517,7 +1517,7 @@ function App() {
         {showInProgressSummary && inProgressItems.length > 0 ? (
           <section
             aria-label="진행중 항목 요약"
-            className="-mt-1 columns-1 gap-x-8 text-xs leading-5 text-slate-500 dark:text-slate-400 sm:columns-2 lg:columns-3"
+            className="-mt-1 columns-1 gap-x-8 pl-1 text-xs leading-5 text-slate-500 dark:text-slate-400 sm:columns-2 sm:pl-0 lg:columns-3"
           >
             {inProgressItems.map((item) => {
               const tabName = tabNameById.get(item.tabId);
