@@ -22,6 +22,9 @@
     background: #f7f7f4;
     color: #202020;
     font-family: theme("fontFamily.sans");
+    touch-action: pan-x pan-y;
+    overscroll-behavior: none;
+    -webkit-tap-highlight-color: transparent;
   }
 
   .dark body {
