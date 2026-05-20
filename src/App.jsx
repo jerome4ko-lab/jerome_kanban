@@ -56,10 +56,18 @@ const STATUSES = [
 const PRIORITY_TAB_NAME = "우선순위";
 
 const MEDITATION_TRACKS = [
-  { src: "/audio/track1.mp3", label: "☀️ 아침확언", cues: [0, 54] },
-  { src: "/audio/track2.mp3", label: "🧘 싱잉볼", cues: [0, 268] },
-  { src: "/audio/track3.mp3", label: "🎯 집중", cues: [0, 60] },
+  { src: "/audio/track1.mp3", label: "☀️ 아침확언", cues: [{ start: 0 }, { start: 54 }] },
+  { src: "/audio/track2.mp3", label: "🧘 싱잉볼", cues: [{ start: 0 }, { start: 268 }] },
+  {
+    src: "/audio/track3.mp3",
+    label: "🎯 집중",
+    cues: [{ start: 0 }, { start: 0, src: "/audio/track3-30m.mp3" }],
+  },
 ];
+
+function cueSrc(track, cue) {
+  return cue.src || track.src;
+}
 
 function formatMmSs(seconds) {
   if (seconds == null || !isFinite(seconds) || seconds < 0) return null;
@@ -513,7 +521,7 @@ function App() {
   const [showCalendar, setShowCalendar] = useState(false);
   const [showMeditation, setShowMeditation] = useState(false);
   const [playingCue, setPlayingCue] = useState(null);
-  const [trackDurations, setTrackDurations] = useState({});
+  const [srcDurations, setSrcDurations] = useState({});
   const [playingRemaining, setPlayingRemaining] = useState(null);
   const meditationAudioRef = useRef(null);
   const tabNavRef = useRef(null);
@@ -710,17 +718,21 @@ function App() {
 
   useEffect(() => {
     if (!showMeditation) return;
+    const allSrcs = new Set();
+    MEDITATION_TRACKS.forEach((track) => {
+      track.cues.forEach((cue) => allSrcs.add(cueSrc(track, cue)));
+    });
     const probes = [];
-    MEDITATION_TRACKS.forEach((track, idx) => {
+    allSrcs.forEach((src) => {
       const probe = new Audio();
       probe.preload = "metadata";
       probe.addEventListener("loadedmetadata", () => {
-        setTrackDurations((prev) =>
-          prev[idx] != null ? prev : { ...prev, [idx]: probe.duration },
+        setSrcDurations((prev) =>
+          prev[src] != null ? prev : { ...prev, [src]: probe.duration },
         );
       });
       probe.addEventListener("error", () => {});
-      probe.src = track.src;
+      probe.src = src;
       probes.push(probe);
     });
     return () => {
@@ -754,7 +766,10 @@ function App() {
   function handleMeditationCue(trackIndex, cueIndex) {
     const track = MEDITATION_TRACKS[trackIndex];
     if (!track) return;
-    const startSec = track.cues[cueIndex];
+    const cue = track.cues[cueIndex];
+    if (!cue) return;
+    const src = cueSrc(track, cue);
+    const startSec = cue.start;
 
     if (
       playingCue &&
@@ -779,10 +794,10 @@ function App() {
     const audio = meditationAudioRef.current;
     audio.pause();
 
-    const desiredSrc = new URL(track.src, window.location.origin).toString();
+    const desiredSrc = new URL(src, window.location.origin).toString();
     const srcChanged = audio.src !== desiredSrc;
     if (srcChanged) {
-      audio.src = track.src;
+      audio.src = src;
     }
 
     const startAt = () => {
@@ -1830,18 +1845,19 @@ function App() {
                   <span className="w-20 text-center text-xs font-medium text-slate-500 dark:text-slate-400">
                     {track.label}
                   </span>
-                  {track.cues.map((cueStart, cueIndex) => {
+                  {track.cues.map((cue, cueIndex) => {
                     const isActive =
                       playingCue &&
                       playingCue.track === trackIndex &&
                       playingCue.cue === cueIndex;
                     const cueLetter = String.fromCharCode(65 + cueIndex);
-                    const dur = trackDurations[trackIndex];
+                    const src = cueSrc(track, cue);
+                    const dur = srcDurations[src];
                     let timeText = null;
                     if (isActive && playingRemaining != null) {
                       timeText = formatMmSs(playingRemaining);
                     } else if (dur != null) {
-                      timeText = formatMmSs(dur - cueStart);
+                      timeText = formatMmSs(dur - cue.start);
                     }
                     return (
                       <button
@@ -1849,7 +1865,7 @@ function App() {
                         type="button"
                         onClick={() => handleMeditationCue(trackIndex, cueIndex)}
                         aria-label={`${track.label} 시작점 ${cueLetter} ${isActive ? "정지" : "재생"}`}
-                        className={`flex items-center gap-1 rounded-lg border px-2.5 py-1 text-xs font-medium transition ${
+                        className={`flex min-w-[68px] items-center justify-center gap-1 rounded-lg border px-2 py-1 text-xs font-medium transition ${
                           isActive
                             ? "border-emerald-300 bg-emerald-50 text-emerald-700 dark:border-emerald-700 dark:bg-emerald-950 dark:text-emerald-300"
                             : "border-slate-200 text-slate-500 hover:border-slate-300 hover:text-slate-700 dark:border-slate-800 dark:text-slate-400 dark:hover:border-slate-700 dark:hover:text-slate-200"
