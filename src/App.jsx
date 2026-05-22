@@ -4,6 +4,7 @@ import {
   CalendarDays,
   CheckCircle2,
   ChevronDown,
+  ChevronRight,
   CircleDashed,
   ClipboardList,
   Eye,
@@ -52,6 +53,14 @@ const STATUSES = [
   { id: "done", label: "완료", icon: CheckCircle2, accent: "amber" },
   { id: "hidden", label: "숨김", icon: EyeOff, accent: "slate" },
 ];
+
+const STATUS_FLOW = ["todo", "in_progress", "done", "hidden"];
+
+function getNextStatus(currentStatus) {
+  const idx = STATUS_FLOW.indexOf(currentStatus);
+  if (idx < 0 || idx >= STATUS_FLOW.length - 1) return null;
+  return STATUS_FLOW[idx + 1];
+}
 
 const PRIORITY_TAB_NAME = "우선순위";
 
@@ -1259,6 +1268,14 @@ function App() {
     await moveItem(itemId, "hidden");
   }
 
+  async function advanceItem(itemId) {
+    const target = items.find((entry) => entry.id === itemId);
+    if (!target) return;
+    const next = getNextStatus(target.status);
+    if (!next) return;
+    await moveItem(itemId, next);
+  }
+
   async function moveItem(itemId, nextStatus) {
     const previous = items.find((entry) => entry.id === itemId);
     if (!previous || previous.status === nextStatus) return false;
@@ -1784,6 +1801,7 @@ function App() {
                     onMoveGroupToHidden={status.id === "done" ? moveGroupToHidden : undefined}
                     onMoveAllToHidden={status.id === "done" ? moveAllDoneToHidden : undefined}
                     onMoveItemToHidden={status.id === "done" ? moveItemToHidden : undefined}
+                    onAdvanceItem={status.id !== "hidden" ? advanceItem : undefined}
                     isFirstUseHint={activeItems.length === 0 && status.id === "todo"}
                   />
                 ))}
@@ -2543,6 +2561,7 @@ function KanbanColumn({
   onMoveGroupToHidden,
   onMoveAllToHidden,
   onMoveItemToHidden,
+  onAdvanceItem,
   isFirstUseHint = false,
 }) {
   const Icon = status.icon;
@@ -2573,6 +2592,7 @@ function KanbanColumn({
         onFlushMemos={onFlushMemos}
         groupSuggestions={groupSuggestions}
         onMoveToHidden={onMoveItemToHidden}
+        onAdvance={onAdvanceItem}
       />
     );
   }
@@ -2704,6 +2724,7 @@ function ItemCard({
   onFlushMemos,
   groupSuggestions,
   onMoveToHidden,
+  onAdvance,
 }) {
   const [isEditing, setIsEditing] = useState(false);
   const [draft, setDraft] = useState(formatGroupedText(item));
@@ -2883,6 +2904,23 @@ function ItemCard({
         >
           <Trash2 size={13} />
         </button>
+        {onAdvance && getNextStatus(item.status) ? (
+          <button
+            type="button"
+            onPointerDown={stopDragPropagation}
+            onClick={(e) => {
+              e.stopPropagation();
+              onAdvance(item.id);
+            }}
+            title="다음 단계로"
+            aria-label="다음 단계로"
+            className={`inline-flex h-6 w-6 shrink-0 items-center justify-center rounded transition hover:bg-slate-100 dark:hover:bg-slate-800 ${accentText(
+              STATUSES.find((s) => s.id === getNextStatus(item.status))?.accent || "slate",
+            )}`}
+          >
+            <ChevronRight size={14} />
+          </button>
+        ) : null}
       </div>
 
       {memos.length > 0 ? (
