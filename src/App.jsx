@@ -15,11 +15,17 @@ import {
   LockKeyhole,
   LogOut,
   Moon,
+  Music,
+  Pause,
   Pencil,
   Play,
   Plus,
   Quote,
+  Repeat,
   Settings,
+  Shuffle,
+  SkipBack,
+  SkipForward,
   Square,
   Sun,
   Trash2,
@@ -75,6 +81,51 @@ const MEDITATION_TRACKS = [
     cues: [{ start: 0 }, { start: 0, src: "/audio/track3-30m.mp3" }],
   },
 ];
+
+const HANRORO_TRACKS = [
+  { videoId: "pNi9PjmbUrI", title: "입춘", duration: 249 },
+  { videoId: "h0KIWaUEIgQ", title: "사랑하게 될 거야", duration: 167 },
+  { videoId: "_Ngk-DCHfD0", title: "0+0", duration: 193 },
+  { videoId: "JyoltvsJ9Fw", title: "자처", duration: 274 },
+  { videoId: "4JwkYsfKRKM", title: "나침반", duration: 173 },
+  { videoId: "4SrrieLwsOI", title: "정류장", duration: 257 },
+  { videoId: "puw1hdSnSX0", title: "생존법", duration: 223 },
+  { videoId: "Gofn_ULNd5Q", title: "1111", duration: 232 },
+  { videoId: "gC2zA8NRzXk", title: "화해", duration: 311 },
+  { videoId: "tKERw3_ked0", title: "시간을 달리네", duration: 249 },
+];
+
+let ytApiPromise = null;
+
+function loadYouTubeIframeApi() {
+  if (window.YT && window.YT.Player) return Promise.resolve(window.YT);
+  if (!ytApiPromise) {
+    ytApiPromise = new Promise((resolve) => {
+      const prev = window.onYouTubeIframeAPIReady;
+      window.onYouTubeIframeAPIReady = () => {
+        if (typeof prev === "function") prev();
+        resolve(window.YT);
+      };
+      const tag = document.createElement("script");
+      tag.src = "https://www.youtube.com/iframe_api";
+      tag.async = true;
+      document.head.appendChild(tag);
+    });
+  }
+  return ytApiPromise;
+}
+
+function shuffledTrackOrder(length, firstIndex) {
+  const rest = [];
+  for (let i = 0; i < length; i += 1) {
+    if (i !== firstIndex) rest.push(i);
+  }
+  for (let i = rest.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [rest[i], rest[j]] = [rest[j], rest[i]];
+  }
+  return firstIndex == null ? rest : [firstIndex, ...rest];
+}
 
 function cueSrc(track, cue) {
   return cue.src || track.src;
@@ -499,6 +550,10 @@ function App() {
     "meditationEnabled",
     false,
   );
+  const [playlistEnabled, setPlaylistEnabled] = useLocalToggle(
+    "playlistEnabled",
+    false,
+  );
   const [subscriptions, setSubscriptions] = useState([]);
   const [calendarNotes, setCalendarNotes] = useState([]);
   const [authStatus, setAuthStatus] = useState("checking");
@@ -535,10 +590,12 @@ function App() {
   const [tabHintActive, setTabHintActive] = useState(false);
   const [showCalendar, setShowCalendar] = useState(false);
   const [showMeditation, setShowMeditation] = useState(false);
+  const [showPlaylist, setShowPlaylist] = useState(false);
   const [playingCue, setPlayingCue] = useState(null);
   const [srcDurations, setSrcDurations] = useState({});
   const [playingRemaining, setPlayingRemaining] = useState(null);
   const meditationAudioRef = useRef(null);
+  const playlistPauseRef = useRef(null);
   const tabNavRef = useRef(null);
   const tabHintTimer = useRef(null);
   const itemTimers = useRef(new Map());
@@ -797,6 +854,8 @@ function App() {
       setPlayingCue(null);
       return;
     }
+
+    playlistPauseRef.current?.();
 
     if (!meditationAudioRef.current) {
       const el = new Audio();
@@ -1528,6 +1587,8 @@ function App() {
               }
               meditationEnabled={meditationEnabled}
               onSetMeditationEnabled={setMeditationEnabled}
+              playlistEnabled={playlistEnabled}
+              onSetPlaylistEnabled={setPlaylistEnabled}
               onLogout={handleLogout}
               currentUser={currentUser}
             />
@@ -1914,9 +1975,256 @@ function App() {
           )}
         </div>
         )}
+
+        {/* 한로로 플레이리스트 토글 (설정에서 켠 경우에만 노출) */}
+        {playlistEnabled && (
+        <div className="mt-2 border-t border-slate-200 pt-3 dark:border-slate-800">
+          <button
+            type="button"
+            onClick={() => setShowPlaylist((v) => !v)}
+            className="flex w-full items-center justify-center gap-1.5 rounded-lg py-1.5 text-xs font-medium text-slate-400 transition hover:text-slate-600 dark:text-slate-600 dark:hover:text-slate-400"
+          >
+            <Music size={13} />
+            <span>플레이리스트</span>
+            <ChevronDown
+              size={13}
+              className={`transition-transform duration-200 ${showPlaylist ? "rotate-180" : ""}`}
+            />
+          </button>
+          {showPlaylist && (
+            <HanroroPlaylist
+              controlRef={playlistPauseRef}
+              onPlayStart={() => {
+                if (meditationAudioRef.current) {
+                  meditationAudioRef.current.pause();
+                }
+                setPlayingCue(null);
+              }}
+            />
+          )}
+        </div>
+        )}
       </div>
       <Toast toast={toast} />
     </main>
+  );
+}
+
+function HanroroPlaylist({ controlRef, onPlayStart }) {
+  const [current, setCurrent] = useState(null);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [continuous, setContinuous] = useState(true);
+  const [shuffle, setShuffle] = useState(false);
+  const [playerReady, setPlayerReady] = useState(false);
+  const playerRef = useRef(null);
+  const playerBoxRef = useRef(null);
+  const orderRef = useRef(HANRORO_TRACKS.map((_, i) => i));
+  const onPlayStartRef = useRef(onPlayStart);
+  const onEndedRef = useRef(null);
+
+  useEffect(() => {
+    onPlayStartRef.current = onPlayStart;
+  });
+
+  useEffect(() => {
+    let cancelled = false;
+    loadYouTubeIframeApi().then((YT) => {
+      if (cancelled || !playerBoxRef.current) return;
+      playerRef.current = new YT.Player(playerBoxRef.current, {
+        width: "100%",
+        height: "100%",
+        playerVars: { playsinline: 1, rel: 0 },
+        events: {
+          onReady: () => {
+            if (!cancelled) setPlayerReady(true);
+          },
+          onStateChange: (event) => {
+            const state = window.YT?.PlayerState;
+            if (!state) return;
+            if (event.data === state.PLAYING) {
+              setIsPlaying(true);
+              onPlayStartRef.current?.();
+            } else if (event.data === state.PAUSED) {
+              setIsPlaying(false);
+            } else if (event.data === state.ENDED) {
+              onEndedRef.current?.();
+            }
+          },
+        },
+      });
+    });
+    return () => {
+      cancelled = true;
+      try {
+        playerRef.current?.destroy?.();
+      } catch {
+        /* 이미 파괴된 플레이어는 무시 */
+      }
+      playerRef.current = null;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!controlRef) return undefined;
+    controlRef.current = () => {
+      try {
+        playerRef.current?.pauseVideo?.();
+      } catch {
+        /* 플레이어 미준비 시 무시 */
+      }
+    };
+    return () => {
+      controlRef.current = null;
+    };
+  }, [controlRef]);
+
+  function playTrack(index) {
+    const track = HANRORO_TRACKS[index];
+    if (!track || !playerRef.current || !playerReady) return;
+    onPlayStartRef.current?.();
+    playerRef.current.loadVideoById(track.videoId);
+    setCurrent(index);
+    setIsPlaying(true);
+  }
+
+  function step(delta, fromIndex) {
+    const order = orderRef.current;
+    if (order.length === 0) return;
+    const base = fromIndex != null ? fromIndex : current;
+    const pos = base == null ? -1 : order.indexOf(base);
+    const nextPos = pos === -1 ? 0 : (pos + delta + order.length) % order.length;
+    playTrack(order[nextPos]);
+  }
+
+  useEffect(() => {
+    onEndedRef.current = () => {
+      if (continuous) {
+        step(1);
+      } else {
+        setIsPlaying(false);
+      }
+    };
+  });
+
+  function togglePlayPause() {
+    if (!playerRef.current || !playerReady) return;
+    if (current == null) {
+      step(1);
+      return;
+    }
+    if (isPlaying) {
+      playerRef.current.pauseVideo();
+    } else {
+      onPlayStartRef.current?.();
+      playerRef.current.playVideo();
+    }
+  }
+
+  function toggleShuffle() {
+    const next = !shuffle;
+    orderRef.current = next
+      ? shuffledTrackOrder(HANRORO_TRACKS.length, current)
+      : HANRORO_TRACKS.map((_, i) => i);
+    setShuffle(next);
+  }
+
+  const modeButtonClass = (active) =>
+    `flex h-7 w-9 items-center justify-center rounded-lg border transition ${
+      active
+        ? "border-emerald-300 bg-emerald-50 text-emerald-700 dark:border-emerald-700 dark:bg-emerald-950 dark:text-emerald-300"
+        : "border-slate-200 text-slate-400 hover:border-slate-300 hover:text-slate-600 dark:border-slate-800 dark:text-slate-500 dark:hover:border-slate-700 dark:hover:text-slate-300"
+    }`;
+
+  return (
+    <div className="mt-3 flex flex-col items-center gap-3 pb-4">
+      <div className="w-full max-w-[240px] overflow-hidden rounded-lg border border-slate-200 bg-slate-100 dark:border-slate-800 dark:bg-slate-900">
+        <div className="aspect-video w-full">
+          <div ref={playerBoxRef} className="h-full w-full" />
+        </div>
+      </div>
+
+      <div className="flex items-center gap-1.5">
+        <button
+          type="button"
+          onClick={() => step(-1)}
+          aria-label="이전 곡"
+          className={modeButtonClass(false)}
+        >
+          <SkipBack size={13} />
+        </button>
+        <button
+          type="button"
+          onClick={togglePlayPause}
+          aria-label={isPlaying ? "일시정지" : "재생"}
+          className={modeButtonClass(isPlaying)}
+        >
+          {isPlaying ? <Pause size={14} /> : <Play size={14} />}
+        </button>
+        <button
+          type="button"
+          onClick={() => step(1)}
+          aria-label="다음 곡"
+          className={modeButtonClass(false)}
+        >
+          <SkipForward size={13} />
+        </button>
+        <span className="mx-1 h-4 w-px bg-slate-200 dark:bg-slate-800" />
+        <button
+          type="button"
+          onClick={() => setContinuous((v) => !v)}
+          aria-label={`연속재생 ${continuous ? "끄기" : "켜기"}`}
+          title="연속재생"
+          className={modeButtonClass(continuous)}
+        >
+          <Repeat size={13} />
+        </button>
+        <button
+          type="button"
+          onClick={toggleShuffle}
+          aria-label={`셔플 ${shuffle ? "끄기" : "켜기"}`}
+          title="셔플"
+          className={modeButtonClass(shuffle)}
+        >
+          <Shuffle size={13} />
+        </button>
+      </div>
+
+      <div className="flex w-full max-w-sm flex-col">
+        {HANRORO_TRACKS.map((track, index) => {
+          const isActive = index === current;
+          return (
+            <button
+              key={track.videoId}
+              type="button"
+              onClick={() =>
+                isActive ? togglePlayPause() : playTrack(index)
+              }
+              className={`flex items-center gap-2 rounded-md px-2 py-1.5 text-xs transition ${
+                isActive
+                  ? "bg-emerald-50 font-medium text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300"
+                  : "text-slate-500 hover:bg-slate-50 hover:text-slate-700 dark:text-slate-400 dark:hover:bg-slate-900 dark:hover:text-slate-200"
+              }`}
+            >
+              <span className="flex w-4 items-center justify-center tabular-nums text-[10px] opacity-70">
+                {isActive ? (
+                  isPlaying ? (
+                    <Pause size={11} />
+                  ) : (
+                    <Play size={11} />
+                  )
+                ) : (
+                  index + 1
+                )}
+              </span>
+              <span className="flex-1 text-left">{track.title}</span>
+              <span className="tabular-nums text-[10px] opacity-70">
+                {formatMmSs(track.duration)}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+    </div>
   );
 }
 
@@ -3299,11 +3607,13 @@ function SettingsMenu({
   onToggleInProgressSummary,
   meditationEnabled,
   onSetMeditationEnabled,
+  playlistEnabled,
+  onSetPlaylistEnabled,
   onLogout,
   currentUser,
 }) {
   const [open, setOpen] = useState(false);
-  const [pwPromptActive, setPwPromptActive] = useState(false);
+  const [pwTarget, setPwTarget] = useState(null);
   const [pwInput, setPwInput] = useState("");
   const [pwError, setPwError] = useState(false);
   const containerRef = useRef(null);
@@ -3334,6 +3644,43 @@ function SettingsMenu({
         ? "bg-slate-950 text-white dark:bg-emerald-400 dark:text-slate-950"
         : "text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
     }`;
+
+  const renderPwForm = (onSuccess) => (
+    <form
+      onSubmit={(e) => {
+        e.preventDefault();
+        if (pwInput === MEDITATION_PASSWORD) {
+          onSuccess();
+          setPwTarget(null);
+          setPwInput("");
+          setPwError(false);
+        } else {
+          setPwError(true);
+          setPwInput("");
+          window.setTimeout(() => setPwError(false), 1500);
+        }
+      }}
+      className="mb-1 flex items-center gap-1 rounded-md bg-slate-50 px-2 py-1.5 dark:bg-slate-800"
+    >
+      <input
+        type="password"
+        autoFocus
+        value={pwInput}
+        onChange={(e) => setPwInput(e.target.value)}
+        placeholder={pwError ? "비밀번호 오류" : "비밀번호"}
+        inputMode="numeric"
+        className={`min-w-0 flex-1 bg-transparent text-sm text-slate-700 outline-none placeholder:text-slate-400 dark:text-slate-100 dark:placeholder:text-slate-500 ${
+          pwError ? "placeholder:text-rose-500 dark:placeholder:text-rose-400" : ""
+        }`}
+      />
+      <button
+        type="submit"
+        className="shrink-0 whitespace-nowrap rounded bg-emerald-500 px-2.5 py-1 text-xs font-semibold text-white hover:bg-emerald-600"
+      >
+        확인
+      </button>
+    </form>
+  );
 
   return (
     <div ref={containerRef} className="relative">
@@ -3464,11 +3811,11 @@ function SettingsMenu({
             onClick={() => {
               if (meditationEnabled) {
                 onSetMeditationEnabled(false);
-                setPwPromptActive(false);
+                setPwTarget(null);
                 setPwInput("");
                 setPwError(false);
               } else {
-                setPwPromptActive((v) => !v);
+                setPwTarget((t) => (t === "meditation" ? null : "meditation"));
                 setPwInput("");
                 setPwError(false);
               }
@@ -3483,42 +3830,36 @@ function SettingsMenu({
               {meditationEnabled ? "표시 중" : "숨김"}
             </span>
           </button>
-          {!meditationEnabled && pwPromptActive ? (
-            <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                if (pwInput === MEDITATION_PASSWORD) {
-                  onSetMeditationEnabled(true);
-                  setPwPromptActive(false);
-                  setPwInput("");
-                  setPwError(false);
-                } else {
-                  setPwError(true);
-                  setPwInput("");
-                  window.setTimeout(() => setPwError(false), 1500);
-                }
-              }}
-              className="mb-1 flex items-center gap-1 rounded-md bg-slate-50 px-2 py-1.5 dark:bg-slate-800"
-            >
-              <input
-                type="password"
-                autoFocus
-                value={pwInput}
-                onChange={(e) => setPwInput(e.target.value)}
-                placeholder={pwError ? "비밀번호 오류" : "비밀번호"}
-                inputMode="numeric"
-                className={`min-w-0 flex-1 bg-transparent text-sm text-slate-700 outline-none placeholder:text-slate-400 dark:text-slate-100 dark:placeholder:text-slate-500 ${
-                  pwError ? "placeholder:text-rose-500 dark:placeholder:text-rose-400" : ""
-                }`}
-              />
-              <button
-                type="submit"
-                className="shrink-0 whitespace-nowrap rounded bg-emerald-500 px-2.5 py-1 text-xs font-semibold text-white hover:bg-emerald-600"
-              >
-                확인
-              </button>
-            </form>
-          ) : null}
+          {!meditationEnabled && pwTarget === "meditation"
+            ? renderPwForm(() => onSetMeditationEnabled(true))
+            : null}
+          <button
+            type="button"
+            onClick={() => {
+              if (playlistEnabled) {
+                onSetPlaylistEnabled(false);
+                setPwTarget(null);
+                setPwInput("");
+                setPwError(false);
+              } else {
+                setPwTarget((t) => (t === "playlist" ? null : "playlist"));
+                setPwInput("");
+                setPwError(false);
+              }
+            }}
+            className="flex w-full items-center justify-between gap-2 rounded-md px-2 py-2 text-sm text-slate-700 transition hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800"
+          >
+            <span className="inline-flex items-center gap-2">
+              {playlistEnabled ? <Eye size={14} /> : <EyeOff size={14} />}
+              플레이리스트
+            </span>
+            <span className="text-xs text-slate-400 dark:text-slate-500">
+              {playlistEnabled ? "표시 중" : "숨김"}
+            </span>
+          </button>
+          {!playlistEnabled && pwTarget === "playlist"
+            ? renderPwForm(() => onSetPlaylistEnabled(true))
+            : null}
           <hr className="my-1 border-slate-200 dark:border-slate-700" />
           <button
             type="button"
