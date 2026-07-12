@@ -2016,6 +2016,7 @@ function HanroroPlaylist({ controlRef, onPlayStart }) {
   const [continuous, setContinuous] = useState(true);
   const [shuffle, setShuffle] = useState(false);
   const [playerReady, setPlayerReady] = useState(false);
+  const [showVideo, setShowVideo] = useState(true);
   const playerRef = useRef(null);
   const playerBoxRef = useRef(null);
   const orderRef = useRef(HANRORO_TRACKS.map((_, i) => i));
@@ -2137,11 +2138,25 @@ function HanroroPlaylist({ controlRef, onPlayStart }) {
 
   return (
     <div className="mt-3 flex flex-col items-center gap-3 pb-4">
-      <div className="w-full max-w-[240px] overflow-hidden rounded-lg border border-slate-200 bg-slate-100 dark:border-slate-800 dark:bg-slate-900">
-        <div className="aspect-video w-full">
-          <div ref={playerBoxRef} className="h-full w-full" />
+      {/* 영상 숨김 시에도 iframe을 제거하지 않고 크기만 0으로 접어 재생 유지 */}
+      <div className={showVideo ? "w-full max-w-md" : "h-0 w-0 overflow-hidden"}>
+        <div className="w-full overflow-hidden rounded-lg border border-slate-200 bg-slate-100 dark:border-slate-800 dark:bg-slate-900">
+          <div className="aspect-video w-full">
+            <div ref={playerBoxRef} className="h-full w-full" />
+          </div>
         </div>
       </div>
+
+      <button
+        type="button"
+        onClick={() => setShowVideo((v) => !v)}
+        className={`flex items-center gap-1 text-[11px] font-medium text-slate-400 transition hover:text-slate-600 dark:text-slate-600 dark:hover:text-slate-400 ${
+          showVideo ? "-mt-1" : "-mt-3"
+        }`}
+      >
+        {showVideo ? <EyeOff size={11} /> : <Eye size={11} />}
+        <span>{showVideo ? "영상 숨기기" : "영상 보기"}</span>
+      </button>
 
       <div className="flex items-center gap-1.5">
         <button
