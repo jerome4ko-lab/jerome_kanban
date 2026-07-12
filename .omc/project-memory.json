@@ -34,7 +34,7 @@
     "runtime": null
   },
   "build": {
-    "buildCommand": "npm run build 2>&1 | tail -15",
+    "buildCommand": "npm run build 2>&1 | tail -8",
     "testCommand": null,
     "lintCommand": null,
     "devCommand": "npm run dev",
@@ -176,8 +176,8 @@
     },
     {
       "path": "src/App.jsx",
-      "accessCount": 19,
-      "lastAccessed": 1783845943730,
+      "accessCount": 23,
+      "lastAccessed": 1783846475952,
       "type": "directory"
     },
     {
