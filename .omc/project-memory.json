@@ -1,7 +1,7 @@
 {
   "version": "1.0.0",
-  "lastScanned": 1777817597730,
-  "projectRoot": "c:\\Users\\jazz2\\Codex\\AI_Study",
+  "lastScanned": 1783845082734,
+  "projectRoot": "/home/jerome/projects/jerome_kanban",
   "techStack": {
     "languages": [
       {
@@ -34,7 +34,7 @@
     "runtime": null
   },
   "build": {
-    "buildCommand": "npm run build",
+    "buildCommand": "npm run build 2>&1 | tail -15",
     "testCommand": null,
     "lintCommand": null,
     "devCommand": "npm run dev",
@@ -56,55 +56,91 @@
     "workspaces": [],
     "mainDirectories": [
       "public",
+      "scripts",
       "src"
     ],
-    "gitBranches": null
+    "gitBranches": {
+      "defaultBranch": "main",
+      "branchingStrategy": null
+    }
   },
   "customNotes": [],
   "directoryMap": {
+    "Temp": {
+      "path": "Temp",
+      "purpose": null,
+      "fileCount": 2,
+      "lastAccessed": 1783845082726,
+      "keyFiles": [
+        "image.png",
+        "image2.png"
+      ]
+    },
     "dist": {
       "path": "dist",
       "purpose": "Distribution/build output",
-      "fileCount": 11,
-      "lastAccessed": 1777817597665,
+      "fileCount": 12,
+      "lastAccessed": 1783845082728,
       "keyFiles": [
         "apple-touch-icon-180x180.png",
         "favicon.ico",
+        "favicon.svg",
         "index.html",
-        "manifest.webmanifest",
-        "maskable-icon-512x512.png"
+        "manifest.webmanifest"
       ]
     },
-    "playtest": {
-      "path": "playtest",
+    "error": {
+      "path": "error",
+      "purpose": null,
+      "fileCount": 11,
+      "lastAccessed": 1783845082732,
+      "keyFiles": [
+        "Screenshot_20260515_152628_Chrome.jpg",
+        "Screenshot_20260520_190654_Chrome.jpg",
+        "Screenshot_20260521_082140_Chrome.jpg",
+        "Screenshot_20260603_131341_Chrome.jpg",
+        "Screenshot_20260603_133856_Termius.jpg"
+      ]
+    },
+    "mp3": {
+      "path": "mp3",
       "purpose": null,
       "fileCount": 4,
-      "lastAccessed": 1777817597679,
+      "lastAccessed": 1783845082733,
       "keyFiles": [
-        "desktop-dark.png",
-        "desktop.png",
-        "mobile.png",
-        "railway-desktop.png"
+        "UQ_elo_yW7.mp3",
+        "concentration.mp3",
+        "concentration.webm",
+        "wCqsMslpcH.m4a"
       ]
     },
     "public": {
       "path": "public",
       "purpose": "Public files",
-      "fileCount": 6,
-      "lastAccessed": 1777817597680,
+      "fileCount": 7,
+      "lastAccessed": 1783845082733,
       "keyFiles": [
         "apple-touch-icon-180x180.png",
         "favicon.ico",
+        "favicon.svg",
         "maskable-icon-512x512.png",
-        "pwa-192x192.png",
-        "pwa-512x512.png"
+        "pwa-192x192.png"
+      ]
+    },
+    "scripts": {
+      "path": "scripts",
+      "purpose": "Build/utility scripts",
+      "fileCount": 1,
+      "lastAccessed": 1783845082733,
+      "keyFiles": [
+        "deploy.sh"
       ]
     },
     "server": {
       "path": "server",
       "purpose": null,
       "fileCount": 1,
-      "lastAccessed": 1777817597681,
+      "lastAccessed": 1783845082733,
       "keyFiles": [
         "api.mjs"
       ]
@@ -113,31 +149,21 @@
       "path": "src",
       "purpose": "Source code",
       "fileCount": 3,
-      "lastAccessed": 1777817597682,
+      "lastAccessed": 1783845082733,
       "keyFiles": [
         "App.jsx",
         "index.css",
         "main.jsx"
       ]
     },
-    "Temp": {
-      "path": "Temp",
-      "purpose": null,
-      "fileCount": 2,
-      "lastAccessed": 1777817597682,
-      "keyFiles": [
-        "image.png",
-        "image2.png"
-      ]
-    },
-    "dist\\assets": {
-      "path": "dist\\assets",
+    "dist/assets": {
+      "path": "dist/assets",
       "purpose": "Static assets",
       "fileCount": 2,
-      "lastAccessed": 1777817597684,
+      "lastAccessed": 1783845082734,
       "keyFiles": [
-        "index-DmNzPpLJ.css",
-        "index-_QUwDzxr.js"
+        "index-B6KWsmvm.js",
+        "index-BBoxRIBQ.css"
       ]
     }
   },
@@ -147,6 +173,12 @@
       "accessCount": 95,
       "lastAccessed": 1777735629469,
       "type": "file"
+    },
+    {
+      "path": "src/App.jsx",
+      "accessCount": 19,
+      "lastAccessed": 1783845943730,
+      "type": "directory"
     },
     {
       "path": "",
@@ -191,12 +223,6 @@
       "type": "file"
     },
     {
-      "path": "src/App.jsx",
-      "accessCount": 1,
-      "lastAccessed": 1777698071989,
-      "type": "directory"
-    },
-    {
       "path": "public\\icon.svg",
       "accessCount": 1,
       "lastAccessed": 1777730282290,
@@ -231,6 +257,12 @@
       "accessCount": 1,
       "lastAccessed": 1777735274274,
       "type": "directory"
+    },
+    {
+      "path": "scripts/deploy.sh",
+      "accessCount": 1,
+      "lastAccessed": 1783845800833,
+      "type": "file"
     }
   ],
   "userDirectives": []
