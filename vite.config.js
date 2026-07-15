@@ -42,8 +42,20 @@ export default defineConfig(({ mode }) => {
           runtimeCaching: [
             {
               urlPattern: /\/audio\/.*\.mp3$/,
-              handler: "NetworkOnly",
+              handler: "CacheFirst",
               method: "GET",
+              options: {
+                cacheName: "audio-mp3-v1",
+                cacheableResponse: {
+                  statuses: [200],
+                },
+                expiration: {
+                  maxEntries: 16,
+                  maxAgeSeconds: 60 * 60 * 24 * 30,
+                  purgeOnQuotaError: true,
+                },
+                rangeRequests: true,
+              },
             },
           ],
         },

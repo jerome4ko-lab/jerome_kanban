@@ -83,37 +83,22 @@ const MEDITATION_TRACKS = [
 ];
 
 const HANRORO_TRACKS = [
-  { videoId: "pNi9PjmbUrI", title: "입춘", duration: 249 },
-  { videoId: "h0KIWaUEIgQ", title: "사랑하게 될 거야", duration: 167 },
-  { videoId: "_Ngk-DCHfD0", title: "0+0", duration: 193 },
-  { videoId: "JyoltvsJ9Fw", title: "자처", duration: 274 },
-  { videoId: "4JwkYsfKRKM", title: "나침반", duration: 173 },
-  { videoId: "4SrrieLwsOI", title: "정류장", duration: 257 },
-  { videoId: "puw1hdSnSX0", title: "생존법", duration: 223 },
-  { videoId: "Gofn_ULNd5Q", title: "1111", duration: 232 },
-  { videoId: "gC2zA8NRzXk", title: "화해", duration: 311 },
-  { videoId: "tKERw3_ked0", title: "시간을 달리네", duration: 249 },
+  { audioId: "pNi9PjmbUrI", title: "입춘", duration: 249 },
+  { audioId: "h0KIWaUEIgQ", title: "사랑하게 될 거야", duration: 167 },
+  { audioId: "_Ngk-DCHfD0", title: "0+0", duration: 193 },
+  { audioId: "JyoltvsJ9Fw", title: "자처", duration: 274 },
+  { audioId: "4JwkYsfKRKM", title: "나침반", duration: 173 },
+  { audioId: "4SrrieLwsOI", title: "정류장", duration: 257 },
+  { audioId: "puw1hdSnSX0", title: "생존법", duration: 223 },
+  { audioId: "Gofn_ULNd5Q", title: "1111", duration: 232 },
+  { audioId: "gC2zA8NRzXk", title: "화해", duration: 311 },
+  { audioId: "tKERw3_ked0", title: "시간을 달리네", duration: 249 },
 ];
 
-let ytApiPromise = null;
-
-function loadYouTubeIframeApi() {
-  if (window.YT && window.YT.Player) return Promise.resolve(window.YT);
-  if (!ytApiPromise) {
-    ytApiPromise = new Promise((resolve) => {
-      const prev = window.onYouTubeIframeAPIReady;
-      window.onYouTubeIframeAPIReady = () => {
-        if (typeof prev === "function") prev();
-        resolve(window.YT);
-      };
-      const tag = document.createElement("script");
-      tag.src = "https://www.youtube.com/iframe_api";
-      tag.async = true;
-      document.head.appendChild(tag);
-    });
-  }
-  return ytApiPromise;
-}
+const HANRORO_PLAYBACK_STATE_KEY = "hanroroPlaybackState:v1";
+const HANRORO_AUDIO_CACHE_NAME = "audio-mp3-v1";
+const HANRORO_RESUME_RETRY_DELAY = 350;
+const HANRORO_MAX_RESUME_RETRY_DELAY = 5000;
 
 function shuffledTrackOrder(length, firstIndex) {
   const rest = [];
@@ -1991,17 +1976,16 @@ function App() {
               className={`transition-transform duration-200 ${showPlaylist ? "rotate-180" : ""}`}
             />
           </button>
-          {showPlaylist && (
-            <HanroroPlaylist
-              controlRef={playlistPauseRef}
-              onPlayStart={() => {
-                if (meditationAudioRef.current) {
-                  meditationAudioRef.current.pause();
-                }
-                setPlayingCue(null);
-              }}
-            />
-          )}
+          <HanroroPlaylist
+            controlRef={playlistPauseRef}
+            isExpanded={showPlaylist}
+            onPlayStart={() => {
+              if (meditationAudioRef.current) {
+                meditationAudioRef.current.pause();
+              }
+              setPlayingCue(null);
+            }}
+          />
         </div>
         )}
       </div>
@@ -2010,69 +1994,237 @@ function App() {
   );
 }
 
-function HanroroPlaylist({ controlRef, onPlayStart }) {
+function hanroroAudioSrc(audioId) {
+  return `/audio/hanroro/${audioId}.mp3`;
+}
+
+function HanroroPlaylist({ controlRef, isExpanded, onPlayStart }) {
   const [current, setCurrent] = useState(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [continuous, setContinuous] = useState(true);
   const [shuffle, setShuffle] = useState(false);
-  const [playerReady, setPlayerReady] = useState(false);
-  const [showVideo, setShowVideo] = useState(true);
-  const playerRef = useRef(null);
-  const playerBoxRef = useRef(null);
+
+  const audioRef = useRef(null);
   const orderRef = useRef(HANRORO_TRACKS.map((_, i) => i));
   const onPlayStartRef = useRef(onPlayStart);
   const onEndedRef = useRef(null);
+  const currentRef = useRef(current);
+  const isPlayingRef = useRef(isPlaying);
+  const intendedPlayingRef = useRef(false);
+  const lastPersistedAtRef = useRef(0);
+  const resumeTimerRef = useRef(null);
+  const resumeAttemptCountRef = useRef(0);
+  const warmingCacheRef = useRef(new Set());
 
   useEffect(() => {
     onPlayStartRef.current = onPlayStart;
   });
-
   useEffect(() => {
-    let cancelled = false;
-    loadYouTubeIframeApi().then((YT) => {
-      if (cancelled || !playerBoxRef.current) return;
-      playerRef.current = new YT.Player(playerBoxRef.current, {
-        width: "100%",
-        height: "100%",
-        playerVars: { playsinline: 1, rel: 0 },
-        events: {
-          onReady: () => {
-            if (!cancelled) setPlayerReady(true);
-          },
-          onStateChange: (event) => {
-            const state = window.YT?.PlayerState;
-            if (!state) return;
-            if (event.data === state.PLAYING) {
-              setIsPlaying(true);
-              onPlayStartRef.current?.();
-            } else if (event.data === state.PAUSED) {
-              setIsPlaying(false);
-            } else if (event.data === state.ENDED) {
-              onEndedRef.current?.();
-            }
-          },
-        },
+    currentRef.current = current;
+  }, [current]);
+  useEffect(() => {
+    isPlayingRef.current = isPlaying;
+  }, [isPlaying]);
+
+  function syncCurrent(index) {
+    currentRef.current = index;
+    setCurrent(index);
+  }
+
+  function syncPlaying(value) {
+    isPlayingRef.current = value;
+    setIsPlaying(value);
+  }
+
+  function clearResumeTimer() {
+    if (resumeTimerRef.current) {
+      window.clearTimeout(resumeTimerRef.current);
+      resumeTimerRef.current = null;
+    }
+  }
+
+  function getNextOrderedIndex(index) {
+    const order = orderRef.current;
+    if (order.length === 0) return null;
+    const pos = index == null ? -1 : order.indexOf(index);
+    return order[pos === -1 ? 0 : (pos + 1) % order.length];
+  }
+
+  function warmAudioCache(index) {
+    if (typeof window === "undefined" || !("caches" in window)) return;
+
+    const track = HANRORO_TRACKS[index];
+    if (!track) return;
+
+    const src = hanroroAudioSrc(track.audioId);
+    if (warmingCacheRef.current.has(src)) return;
+    warmingCacheRef.current.add(src);
+
+    window.caches
+      .open(HANRORO_AUDIO_CACHE_NAME)
+      .then(async (cache) => {
+        const request = new Request(src, { credentials: "same-origin" });
+        const cached = await cache.match(request);
+        if (!cached) {
+          await cache.add(request);
+        }
+      })
+      .catch(() => {
+        warmingCacheRef.current.delete(src);
       });
-    });
-    return () => {
-      cancelled = true;
+  }
+
+  function warmPlaybackCache(index) {
+    warmAudioCache(index);
+    warmAudioCache(getNextOrderedIndex(index));
+  }
+
+  function getAudioTime() {
+    const audio = audioRef.current;
+    if (!audio || !Number.isFinite(audio.currentTime)) return 0;
+    return Math.max(0, audio.currentTime);
+  }
+
+  function savePlaybackState({ force = false } = {}) {
+    if (typeof window === "undefined") return;
+
+    const now = Date.now();
+    if (!force && now - lastPersistedAtRef.current < 5000) return;
+    lastPersistedAtRef.current = now;
+
+    const index = currentRef.current;
+    if (index == null || !HANRORO_TRACKS[index]) {
       try {
-        playerRef.current?.destroy?.();
+        window.sessionStorage.removeItem(HANRORO_PLAYBACK_STATE_KEY);
       } catch {
-        /* 이미 파괴된 플레이어는 무시 */
+        /* 저장소 접근이 막힌 환경에서는 복원만 건너뜀 */
       }
-      playerRef.current = null;
+      return;
+    }
+
+    try {
+      window.sessionStorage.setItem(
+        HANRORO_PLAYBACK_STATE_KEY,
+        JSON.stringify({
+          current: index,
+          currentTime: getAudioTime(),
+          intendedPlaying: intendedPlayingRef.current,
+          updatedAt: now,
+        }),
+      );
+    } catch {
+      /* 저장소 접근이 막힌 환경에서는 복원만 건너뜀 */
+    }
+  }
+
+  function seekAudio(time) {
+    const audio = audioRef.current;
+    const nextTime = Number(time);
+    if (!audio || !Number.isFinite(nextTime) || nextTime <= 0) return;
+
+    const applySeek = () => {
+      try {
+        audio.currentTime = nextTime;
+      } catch {
+        /* 아직 seek 가능한 상태가 아니면 다음 metadata 로드를 기다림 */
+      }
     };
-  }, []);
+
+    try {
+      audio.currentTime = nextTime;
+    } catch {
+      audio.addEventListener("loadedmetadata", applySeek, { once: true });
+    }
+  }
+
+  function setAudioTrack(index, currentTime = 0) {
+    const track = HANRORO_TRACKS[index];
+    const audio = audioRef.current;
+    if (!track || !audio) return null;
+
+    const src = hanroroAudioSrc(track.audioId);
+    const desiredSrc = new URL(src, window.location.href).toString();
+    syncCurrent(index);
+    warmPlaybackCache(index);
+
+    if (audio.src !== desiredSrc) {
+      audio.src = src;
+      audio.load();
+    }
+    seekAudio(currentTime);
+    return audio;
+  }
+
+  function requestAudioPlay(audio, { preserveIntentOnFailure = false } = {}) {
+    intendedPlayingRef.current = true;
+    onPlayStartRef.current?.();
+    savePlaybackState({ force: true });
+
+    const playPromise = audio.play();
+    if (playPromise && typeof playPromise.catch === "function") {
+      playPromise.catch(() => {
+        syncPlaying(false);
+        if (!preserveIntentOnFailure) {
+          intendedPlayingRef.current = false;
+        } else if (intendedPlayingRef.current) {
+          queueResumeAttempt();
+        }
+        savePlaybackState({ force: true });
+      });
+    }
+  }
+
+  function startTrack(index, options = {}) {
+    const audio = setAudioTrack(index, options.currentTime || 0);
+    if (!audio) return;
+    requestAudioPlay(audio, {
+      preserveIntentOnFailure: Boolean(options.preserveIntentOnFailure),
+    });
+  }
+
+  function resumeCurrent({ preserveIntentOnFailure = true } = {}) {
+    const index = currentRef.current;
+    if (index == null || !HANRORO_TRACKS[index]) return;
+
+    const audio = setAudioTrack(index, getAudioTime());
+    if (!audio) return;
+    requestAudioPlay(audio, { preserveIntentOnFailure });
+  }
+
+  function queueResumeAttempt(delay) {
+    clearResumeTimer();
+    const nextDelay =
+      delay ??
+      Math.min(
+        HANRORO_RESUME_RETRY_DELAY * 2 ** resumeAttemptCountRef.current,
+        HANRORO_MAX_RESUME_RETRY_DELAY,
+      );
+    resumeTimerRef.current = window.setTimeout(() => {
+      resumeTimerRef.current = null;
+      const audio = audioRef.current;
+      if (!intendedPlayingRef.current || !audio || !audio.paused) return;
+      resumeAttemptCountRef.current += 1;
+      resumeCurrent({ preserveIntentOnFailure: true });
+    }, nextDelay);
+  }
+
+  function pausePlayback() {
+    intendedPlayingRef.current = false;
+    resumeAttemptCountRef.current = 0;
+    clearResumeTimer();
+    try {
+      audioRef.current?.pause();
+    } catch {
+      /* 오디오 미준비 시 무시 */
+    }
+    syncPlaying(false);
+    savePlaybackState({ force: true });
+  }
 
   useEffect(() => {
     if (!controlRef) return undefined;
     controlRef.current = () => {
-      try {
-        playerRef.current?.pauseVideo?.();
-      } catch {
-        /* 플레이어 미준비 시 무시 */
-      }
+      pausePlayback();
     };
     return () => {
       controlRef.current = null;
@@ -2081,17 +2233,14 @@ function HanroroPlaylist({ controlRef, onPlayStart }) {
 
   function playTrack(index) {
     const track = HANRORO_TRACKS[index];
-    if (!track || !playerRef.current || !playerReady) return;
-    onPlayStartRef.current?.();
-    playerRef.current.loadVideoById(track.videoId);
-    setCurrent(index);
-    setIsPlaying(true);
+    if (!track) return;
+    startTrack(index);
   }
 
   function step(delta, fromIndex) {
     const order = orderRef.current;
     if (order.length === 0) return;
-    const base = fromIndex != null ? fromIndex : current;
+    const base = fromIndex != null ? fromIndex : currentRef.current;
     const pos = base == null ? -1 : order.indexOf(base);
     const nextPos = pos === -1 ? 0 : (pos + delta + order.length) % order.length;
     playTrack(order[nextPos]);
@@ -2102,32 +2251,149 @@ function HanroroPlaylist({ controlRef, onPlayStart }) {
       if (continuous) {
         step(1);
       } else {
-        setIsPlaying(false);
+        intendedPlayingRef.current = false;
+        syncPlaying(false);
+        savePlaybackState({ force: true });
       }
     };
   });
 
   function togglePlayPause() {
-    if (!playerRef.current || !playerReady) return;
-    if (current == null) {
+    if (currentRef.current == null) {
       step(1);
       return;
     }
-    if (isPlaying) {
-      playerRef.current.pauseVideo();
+    const audio = audioRef.current;
+    if (!audio) return;
+    if (isPlayingRef.current) {
+      pausePlayback();
     } else {
-      onPlayStartRef.current?.();
-      playerRef.current.playVideo();
+      resumeCurrent({ preserveIntentOnFailure: false });
     }
   }
 
   function toggleShuffle() {
     const next = !shuffle;
     orderRef.current = next
-      ? shuffledTrackOrder(HANRORO_TRACKS.length, current)
+      ? shuffledTrackOrder(HANRORO_TRACKS.length, currentRef.current)
       : HANRORO_TRACKS.map((_, i) => i);
     setShuffle(next);
   }
+
+  function restorePlaybackState({ shouldResume = false } = {}) {
+    if (typeof window === "undefined") return;
+
+    let saved = null;
+    try {
+      saved = JSON.parse(
+        window.sessionStorage.getItem(HANRORO_PLAYBACK_STATE_KEY) || "null",
+      );
+    } catch {
+      saved = null;
+    }
+
+    if (!saved || !HANRORO_TRACKS[saved.current]) return;
+
+    const audio = setAudioTrack(saved.current, saved.currentTime);
+    if (!audio) return;
+
+    intendedPlayingRef.current =
+      shouldResume && Boolean(saved.intendedPlaying);
+    if (intendedPlayingRef.current) {
+      queueResumeAttempt(0);
+    }
+  }
+
+  useEffect(() => {
+    restorePlaybackState();
+
+    const persist = () => savePlaybackState({ force: true });
+    const resumeIfIntended = () => {
+      if (intendedPlayingRef.current) queueResumeAttempt(0);
+    };
+    const handleVisibilityChange = () => {
+      persist();
+      if (document.visibilityState === "visible") {
+        resumeIfIntended();
+      } else if (intendedPlayingRef.current) {
+        queueResumeAttempt(HANRORO_RESUME_RETRY_DELAY);
+      }
+    };
+    const handlePageShow = () => restorePlaybackState({ shouldResume: true });
+    const handlePageResume = () => resumeIfIntended();
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    document.addEventListener("resume", handlePageResume);
+    window.addEventListener("pagehide", persist);
+    window.addEventListener("pageshow", handlePageShow);
+    window.addEventListener("focus", resumeIfIntended);
+
+    return () => {
+      persist();
+      clearResumeTimer();
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      document.removeEventListener("resume", handlePageResume);
+      window.removeEventListener("pagehide", persist);
+      window.removeEventListener("pageshow", handlePageShow);
+      window.removeEventListener("focus", resumeIfIntended);
+    };
+  }, []);
+
+  // Media Session API — 잠금화면/알림에 곡 정보와 컨트롤 노출
+  useEffect(() => {
+    if (typeof navigator === "undefined" || !("mediaSession" in navigator)) return undefined;
+    try {
+      navigator.mediaSession.setActionHandler("play", () => {
+        if (currentRef.current == null) {
+          step(1);
+        } else {
+          resumeCurrent({ preserveIntentOnFailure: false });
+        }
+      });
+      navigator.mediaSession.setActionHandler("pause", () => pausePlayback());
+      navigator.mediaSession.setActionHandler("previoustrack", () => step(-1));
+      navigator.mediaSession.setActionHandler("nexttrack", () => step(1));
+    } catch {
+      /* 지원 안 되는 액션은 무시 */
+    }
+    return () => {
+      try {
+        navigator.mediaSession.setActionHandler("play", null);
+        navigator.mediaSession.setActionHandler("pause", null);
+        navigator.mediaSession.setActionHandler("previoustrack", null);
+        navigator.mediaSession.setActionHandler("nexttrack", null);
+      } catch {
+        /* 무시 */
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    if (typeof navigator === "undefined" || !("mediaSession" in navigator)) return;
+    const track = current != null ? HANRORO_TRACKS[current] : null;
+    if (!track) {
+      try { navigator.mediaSession.metadata = null; } catch { /* 무시 */ }
+      return;
+    }
+    try {
+      navigator.mediaSession.metadata = new window.MediaMetadata({
+        title: track.title,
+        artist: "한로로",
+        album: "한로로 플레이리스트",
+      });
+    } catch {
+      /* 미지원 브라우저 무시 */
+    }
+  }, [current]);
+
+  useEffect(() => {
+    if (typeof navigator === "undefined" || !("mediaSession" in navigator)) return;
+    try {
+      navigator.mediaSession.playbackState = isPlaying ? "playing" : "paused";
+    } catch {
+      /* 무시 */
+    }
+  }, [isPlaying]);
 
   const modeButtonClass = (active) =>
     `flex h-7 w-9 items-center justify-center rounded-lg border transition ${
@@ -2137,27 +2403,36 @@ function HanroroPlaylist({ controlRef, onPlayStart }) {
     }`;
 
   return (
-    <div className="mt-3 flex flex-col items-center gap-3 pb-4">
-      {/* 영상 숨김 시에도 iframe을 제거하지 않고 크기만 0으로 접어 재생 유지 */}
-      <div className={showVideo ? "w-full max-w-md" : "h-0 w-0 overflow-hidden"}>
-        <div className="w-full overflow-hidden rounded-lg border border-slate-200 bg-slate-100 dark:border-slate-800 dark:bg-slate-900">
-          <div className="aspect-video w-full">
-            <div ref={playerBoxRef} className="h-full w-full" />
-          </div>
-        </div>
-      </div>
+    <>
+      <audio
+        ref={audioRef}
+        preload="auto"
+        onPlay={() => {
+          intendedPlayingRef.current = true;
+          resumeAttemptCountRef.current = 0;
+          clearResumeTimer();
+          syncPlaying(true);
+          onPlayStartRef.current?.();
+          savePlaybackState({ force: true });
+        }}
+        onPause={() => {
+          syncPlaying(false);
+          savePlaybackState({ force: true });
+          if (intendedPlayingRef.current) {
+            queueResumeAttempt();
+          }
+        }}
+        onEnded={() => onEndedRef.current?.()}
+        onError={() => {
+          intendedPlayingRef.current = false;
+          syncPlaying(false);
+          savePlaybackState({ force: true });
+        }}
+        onTimeUpdate={() => savePlaybackState()}
+      />
 
-      <button
-        type="button"
-        onClick={() => setShowVideo((v) => !v)}
-        className={`flex items-center gap-1 text-[11px] font-medium text-slate-400 transition hover:text-slate-600 dark:text-slate-600 dark:hover:text-slate-400 ${
-          showVideo ? "-mt-1" : "-mt-3"
-        }`}
-      >
-        {showVideo ? <EyeOff size={11} /> : <Eye size={11} />}
-        <span>{showVideo ? "영상 숨기기" : "영상 보기"}</span>
-      </button>
-
+      {isExpanded && (
+      <div className="mt-3 flex flex-col items-center gap-3 pb-4">
       <div className="flex items-center gap-1.5">
         <button
           type="button"
@@ -2209,7 +2484,7 @@ function HanroroPlaylist({ controlRef, onPlayStart }) {
           const isActive = index === current;
           return (
             <button
-              key={track.videoId}
+              key={track.audioId}
               type="button"
               onClick={() =>
                 isActive ? togglePlayPause() : playTrack(index)
@@ -2239,7 +2514,9 @@ function HanroroPlaylist({ controlRef, onPlayStart }) {
           );
         })}
       </div>
-    </div>
+      </div>
+      )}
+    </>
   );
 }
 
